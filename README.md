@@ -20,9 +20,17 @@ A queue-based background-agent orchestrator for [Claude Code](https://claude.com
 
 Parallel agents are cheap to start and expensive to brief. The real cost is
 re-explaining the context to every new session — what the project is, what was
-already tried, what the constraint is. `fork-agent` removes that: the child
-starts from the parent's conversation with `--resume … --fork-session`, so it
-already knows what you would otherwise have to type again.
+already tried, what the constraint is. `fork-agent` can remove that: with
+`--summary` or `--inherit` the child starts from the parent's conversation, so
+it already knows what you would otherwise have to type again.
+
+**But inheritance is opt-in, not the default.** A child that carries hundreds of
+turns of "you are the supervisor, you are doing X" tends to *continue the
+parent's role* instead of doing its own task — measured twice, with the task
+sitting at line 703 of a 714-line inherited transcript while the agent went off
+supervising. A defensive sentence in the system prompt provably reached the
+child and was not enough. So a fork now starts fresh by default; you ask for
+context when you want it.
 
 The rest follows from that one decision. Once agents descend from each other,
 the tree needs a way back (cascade close, merging into the *parent's* branch);
@@ -36,7 +44,7 @@ task intake and an alarm behind it.
 | `/new-agent` | Menu-driven wizard to queue a new background session (name, cwd, prompt, model, effort, permission mode, worktree). Has a "Default" quick-start. |
 | `/close-agent` | Gracefully close a running agent. If it ran in a worktree, asks whether to merge or drop. |
 | `/kill-agent` | Pick from a list of running agents and kill them immediately. ⚠️ **Destructive for worktree agents**: the worktree and its `worktree-<name>` branch are deleted, uncommitted work included. Use `/close-agent` to keep the work. |
-| `/fork` | Fork the *current* session into a child agent that inherits the conversation. |
+| `/fork` | Fork the *current* session into a child agent. The child starts **fresh** by default; `--summary` / `--inherit` passes the conversation. |
 | `/kill-all-exit` | Emergency stop — kill all background agents and exit the current session. ⚠️ Same worktree deletion as `/kill-agent`, for every agent at once. |
 
 ## Architecture (in a nutshell)
@@ -67,7 +75,7 @@ A child agent can be a **new repo** (any cwd) or a **worktree of the parent's re
 
 | | code | conversation |
 |---|---|---|
-| **branch** | `--worktree` → `worktree-<name>` | `fork-agent` → `--resume … --fork-session` |
+| **branch** | `--worktree` → `worktree-<name>` | `fork-agent` → own worktree + branch |
 | **merge** | `/close-agent <name> merge` | `/close-agent <name> merge merge` |
 | **discard** | `/close-agent <name> drop` | `/close-agent` never deletes a transcript |
 
@@ -216,7 +224,7 @@ server mode, and it is worth being precise about who wins where.
 |---|---|---|
 | start a session from the phone | ✅ built in | ✅ `/new-agent`, `/fork`, or the bridge |
 | per-session git worktree | ✅ `--spawn worktree` | ✅ |
-| **child inherits the parent's conversation** | ❌ starts blank | ✅ `--resume … --fork-session` |
+| **child can inherit the parent's conversation** | ❌ starts blank | ✅ opt-in: `--summary` / `--inherit` (fresh by default) |
 | **named hierarchy, cascade close, merge into the parent's branch** | ❌ flat list | ✅ |
 | **approval gate on unattended task intake** | n/a — no such channel exists | ✅ Telegram, with time-boxed grants — **bridge only** |
 | **intake from a network-isolated environment** | ❌ | ✅ file bridge |
@@ -250,8 +258,9 @@ mode would serve the same fan-out from a single process.
 one-off, the picture flips:
 
 - A fresh session knows nothing. Re-explaining the context to every new agent is
-  the actual cost of parallel work, and `--fork-session` removes it — the child
-  starts where the parent is.
+  the actual cost of parallel work, and `--summary` / `--inherit` removes it — the
+  child starts where the parent is. Opt-in, because an inherited role is a real
+  failure mode (see *Why*).
 - A tree of agents needs a way *back*. Cascade close merges each branch into its
   **parent's** branch, deepest first, so the hierarchy survives the merge instead
   of flattening into `main`.
@@ -358,13 +367,13 @@ If you want the queue itself gated, that gate does not exist yet.
 | `new-agent.md` / `close-agent.md` / `kill-agent.md` / `kill-all-exit.md` | Slash command definitions. |
 | `tests/REGRESSION-RUN.md` | The runnable version: paste the opening prompt into a Cowork session, press the Telegram buttons per the map. The Desktop drives its own blocks and spawns a CLI agent over the bridge for the CLI ones — that agent reads its steps from this same file. |
 | `tests/REGRESSION.md` | The end-to-end run-through: the Telegram gate, a real spawn, the work, the report coming back, the close. What `smoke.sh` cannot reach. On 2026-08-29 seven real bugs surfaced this way and **none** by reading the code — `spawned` does not mean the work happened. |
-| `tests/smoke.sh` | `zsh tests/smoke.sh` — 198 assertions over the parts that can be isolated: standing approvals, the state file, the status machine, the three model whitelists agreeing, the prompt byte limit, the restart-counter gating, the tmux session-name resolution, and `zsh -n` on every script. Runs in a throwaway directory and never touches `~/.claude`. What it deliberately does not cover: spawning, merging and killing need a real tmux session, a real git repo and launchd — those are exercised on disposable agents. |
+| `tests/smoke.sh` | `zsh tests/smoke.sh` — 223 assertions over the parts that can be isolated: standing approvals, the state file, the status machine, the three model whitelists agreeing, the prompt byte limit, the restart-counter gating, the tmux session-name resolution, and `zsh -n` on every script. Runs in a throwaway directory and never touches `~/.claude`. What it deliberately does not cover: spawning, merging and killing need a real tmux session, a real git repo and launchd — those are exercised on disposable agents. |
 | `bin/agent-kill-one.sh` / `agent-kill-all.sh` / `agent-kill-tree.sh` / `agent-close-tree.sh` | Helpers called by the slash commands. |
 | `bin/_agent-lib.sh` | Shared helpers: live registry, worktree/transcript resolution, modal auto-dismiss. |
 | `bin/mac-main-watchdog.sh` | Keeps the command-center session alive; drives the child sweep. |
 | `bin/agent-child-watchdog.sh` | Restores registered child agents (`--resume`) after a reboot or crash. |
 | `bin/merge-sessions.sh` | Joins two session transcripts into one resumable session, when a restart split the history. |
-| `bin/fork-agent` | Forks the calling session into a child agent that **inherits the conversation** (`--resume … --fork-session`). |
+| `bin/fork-agent` | Forks the calling session into a child agent. Fresh by default; `--summary` / `--inherit` passes the parent's conversation. |
 | `fork.md` | `/fork` slash command. |
 | `local.mac-main-watchdog.plist.template` | launchd plist for the watchdog (300 s + `RunAtLoad`). |
 | `bin/_bridge-lib.sh` | Bridge core: validation, Telegram, approvals + time-boxed grants, result publishing, stall detection. |
@@ -406,9 +415,17 @@ futó agentből, vagy távolról, a Claude mobilapp **Code** füléről.
 
 Párhuzamos agentet olcsó indítani, és drága eligazítani. A valódi költség a
 kontextus újramagyarázása minden új sessionnek — mi a projekt, mit próbáltunk
-már, mi a megkötés. A `fork-agent` ezt veszi el: a gyerek a szülő
-beszélgetéséből indul (`--resume … --fork-session`), tehát eleve tudja azt,
-amit különben újra be kellene gépelned.
+már, mi a megkötés. A `fork-agent` ezt el tudja venni: `--summary` vagy
+`--inherit` mellett a gyerek a szülő beszélgetéséből indul, tehát eleve tudja
+azt, amit különben újra be kellene gépelned.
+
+**Az öröklés viszont kérésre megy, nem alapból.** Az a gyerek, amelyik több száz
+fordulónyi „te vagy a felügyelő, ezen dolgozol" kontextust hoz magával, hajlamos
+**a szülő szerepét folytatni** a saját feladata helyett — kétszer is mértük, egy
+714 soros örökölt átiratban a feladat a 703. sorban állt, az agent meg
+felügyelni kezdett. A rendszer-promptba tett védekező mondat bizonyíthatóan
+odaért, és nem volt elég. Ezért a fork ma friss lappal indul; a kontextust akkor
+kéred, amikor tényleg kell.
 
 A többi ebből az egy döntésből következik. Amint az agentek egymásból
 származnak, kell út **visszafelé** is (kaszkádos lezárás, merge a *szülő*
@@ -422,7 +439,7 @@ nélküli munkabevitel elé, és egy riasztó mögé.
 | `/new-agent` | Menüvezérelt varázsló új háttér-session sorba állításához (név, mappa, prompt, modell, effort, permission mode, worktree). Van „Default" gyorsindítás. |
 | `/close-agent` | Futó agent rendes lezárása. Ha worktree-ben dolgozott, megkérdezi: merge vagy eldobás. |
 | `/kill-agent` | Listából választható agentek azonnali kilövése. ⚠️ **Worktree-s agentnél adatvesztő**: a worktree és a `worktree-<név>` ág is törlődik, a nem commitolt munkával együtt. Ha meg akarod tartani: `/close-agent`. |
-| `/fork` | Az **aktuális** sessiont forkolja gyerek-agentté, ami örökli a beszélgetést. |
+| `/fork` | Az **aktuális** sessiont forkolja gyerek-agentté. A gyerek alapból **friss lappal** indul; `--summary` / `--inherit` adja át a beszélgetést. |
 | `/kill-all-exit` | Vészfék — minden háttér-agent kilövése és kilépés az aktuális sessionből. ⚠️ Ugyanaz a worktree-törlés, mint a `/kill-agent`-nél, csak egyszerre mindegyikre. |
 
 ### Felépítés dióhéjban
@@ -453,7 +470,7 @@ Egy gyerek-agent lehet **külön repó** (bármilyen cwd) vagy **a szülő repó
 
 | | kód | beszélgetés |
 |---|---|---|
-| **ág** | `--worktree` → `worktree-<név>` | `fork-agent` → `--resume … --fork-session` |
+| **ág** | `--worktree` → `worktree-<név>` | `fork-agent` → saját worktree + ág |
 | **merge** | `/close-agent <név> merge` | `/close-agent <név> merge merge` |
 | **eldobás** | `/close-agent <név> drop` | a `/close-agent` sosem töröl átiratot |
 
@@ -596,7 +613,7 @@ kimondani, ki hol nyer.
 |---|---|---|
 | session indítása telefonról | ✅ beépítve | ✅ `/new-agent`, `/fork` vagy a híd |
 | sessiononkénti git worktree | ✅ `--spawn worktree` | ✅ |
-| **a gyerek örökli a szülő beszélgetését** | ❌ üres lappal indul | ✅ `--resume … --fork-session` |
+| **a gyerek örökölheti a szülő beszélgetését** | ❌ üres lappal indul | ✅ kérésre: `--summary` / `--inherit` (alapból friss) |
 | **névhierarchia, kaszkádos lezárás, merge a szülő ágába** | ❌ lapos lista | ✅ |
 | **jóváhagyási kapu a felügyelet nélküli munkabevitelen** | n/a — nincs ilyen csatorna | ✅ Telegram, időablakos felhatalmazással — **csak a hídon** |
 | **munkaátvétel hálózat nélküli környezetből** | ❌ | ✅ fájl-híd |
@@ -630,8 +647,9 @@ szolgálná ki.
 egyszeri, megfordul a kép:
 
 - Egy friss session semmit nem tud. A kontextus újramagyarázása minden új agentnek
-  a párhuzamos munka valódi költsége — a `--fork-session` ezt elveszi: a gyerek ott
-  kezdi, ahol a szülő tart.
+  a párhuzamos munka valódi költsége — a `--summary` / `--inherit` ezt elveszi: a
+  gyerek ott kezdi, ahol a szülő tart. Kérésre, mert az örökölt szerep valódi
+  hibaforrás (lásd *Miért*).
 - Egy agent-fához út is kell **visszafelé**. A kaszkádos lezárás minden ágat a
   **szülő** ágába mergel, a legmélyebbtől felfelé, így a hierarchia túléli a merge-öt
   ahelyett, hogy a `main`-be lapulna.
@@ -735,13 +753,13 @@ Ha magát a queue-t is kapu mögé tennéd, az a kapu még nem létezik.
 | `new-agent.md` / `close-agent.md` / `kill-agent.md` / `kill-all-exit.md` | A slash parancsok definíciói. |
 | `tests/REGRESSION-RUN.md` | A futtatható változat: a kezdő promptot beilleszted egy Cowork sessionbe, a gombokat a térkép szerint nyomod. A Desktop a saját blokkjait futtatja, a CLI-körhöz pedig a **hídon indít egy CLI-agentet**, ami ugyanebből a fájlból olvassa a lépéseit. |
 | `tests/REGRESSION.md` | A végigjátszható forgatókönyv: Telegram-kapu, valódi indítás, a munka, a jelentés visszaútja, lezárás. Amit a `smoke.sh` nem ér el. 2026-08-29-én hét valódi hiba így került elő, és **egy sem** kódolvasással — a `spawned` nem jelenti azt, hogy a munka megtörtént. |
-| `tests/smoke.sh` | `zsh tests/smoke.sh` — 198 állítás az izolálható részekre: állandó jóváhagyások, állapot-fájl, státusz-gép, a három modell-fehérlista egyezése, a prompt bájt-limitje, az újraindítás-számláló nullázása, a tmux session-név feloldása, és `zsh -n` minden szkriptre. Eldobható könyvtárban fut, a `~/.claude`-hoz hozzá sem nyúl. Amit szándékosan nem fed le: az indítás, a merge és a kilövés valódi tmux-sessiont, git-repót és launchd-t igényel — azokat eldobható agenteken teszteljük. |
+| `tests/smoke.sh` | `zsh tests/smoke.sh` — 223 állítás az izolálható részekre: állandó jóváhagyások, állapot-fájl, státusz-gép, a három modell-fehérlista egyezése, a prompt bájt-limitje, az újraindítás-számláló nullázása, a tmux session-név feloldása, és `zsh -n` minden szkriptre. Eldobható könyvtárban fut, a `~/.claude`-hoz hozzá sem nyúl. Amit szándékosan nem fed le: az indítás, a merge és a kilövés valódi tmux-sessiont, git-repót és launchd-t igényel — azokat eldobható agenteken teszteljük. |
 | `bin/agent-kill-one.sh` / `agent-kill-all.sh` / `agent-kill-tree.sh` / `agent-close-tree.sh` | A slash parancsok segédszkriptjei. |
 | `bin/_agent-lib.sh` | Közös segédfüggvények: élő nyilvántartás, worktree/átirat-feloldás, modál-automatika. |
 | `bin/mac-main-watchdog.sh` | Életben tartja a command-centert; vezérli a gyerek-sweepet. |
 | `bin/agent-child-watchdog.sh` | Visszaállítja a nyilvántartott gyerek-agenteket (`--resume`) reboot vagy összeomlás után. |
 | `bin/merge-sessions.sh` | Két session-átiratot egyetlen resume-olható sessionné fűz, ha egy újraindítás kettévágta a történetet. |
-| `bin/fork-agent` | A hívó sessiont gyerek-agentté forkolja, ami **örökli a beszélgetést** (`--resume … --fork-session`). |
+| `bin/fork-agent` | A hívó sessiont gyerek-agentté forkolja. Alapból friss lappal; `--summary` / `--inherit` adja át a szülő beszélgetését. |
 | `fork.md` | A `/fork` slash parancs. |
 | `local.mac-main-watchdog.plist.template` | A watchdog launchd plistje (300 mp + `RunAtLoad`). |
 | `bin/_bridge-lib.sh` | A híd magja: validáció, Telegram, jóváhagyás + időablakos felhatalmazás, eredmény-publikálás, beragadás-észlelés. |
