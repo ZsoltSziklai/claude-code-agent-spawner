@@ -1,0 +1,43 @@
+#!/bin/zsh
+# agent-send-prompt — feladatot kuld egy SAJAT LESZARMAZOTT agentnek.
+#
+# ⚠️ MIERT LETEZIK. A CLI-kor G5 lepese (kaszkados lezaras ket szint melyen) azt
+# igenyli, hogy egy agent uzenjen a sajat gyerekenek. A nyers `tmux send-keys`-t
+# az auto-mode classifier letiltja — helyesen, mert az BARMELYIK sessionbe irhat,
+# beleertve a felhasznalo eles agentjeit. Ez a wrapper szuk es auditalhato:
+# CSAK a hivo SAJAT leszarmazottjaba ir, es a kuldest ELLENORZI is.
+#
+# usage: agent-send-prompt <agent-nev> <szoveg>
+emulate -L zsh
+setopt nullglob
+set -u
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+die() { print -u2 "agent-send-prompt: $*"; exit 1 }
+
+source "$(dirname "${(%):-%x}")/_agent-lib.sh"
+
+TARGET="${1:-}"; TEXT="${2:-}"
+[[ -n "$TARGET" && -n "$TEXT" ]] || die "usage: agent-send-prompt <agent-nev> <szoveg>"
+[[ "$TARGET" =~ '^[a-zA-Z0-9_-]{3,64}$' ]] || die "érvénytelen agent-név: $TARGET"
+
+ME="${CLAUDE_AGENT_NAME:-}"
+[[ -n "$ME" ]] || die "nincs CLAUDE_AGENT_NAME — ez a session nem az agent-rendszerből indult"
+
+# ⚠️ A HATAR: csak LEFELE a fadban. Nem eleg az `agent-*` prefix — az a
+# felhasznalo eles agentjeit (dsolar-*, dnissan-*) is beengedne. Aki elinditotta,
+# az uzenhet neki; masnak nem.
+[[ "$TARGET" == "$ME-"* ]] \
+  || die "csak a saját leszármazottadnak küldhetsz ($ME-*), ez nem az: $TARGET"
+
+SESS=$(agent_tmux_session "$TARGET") || die "nincs ilyen futó agent: $TARGET"
+
+CWD=$(tmux display-message -p -t "$SESS" '#{pane_current_path}' 2>/dev/null)
+[[ -n "$CWD" ]] || CWD=$(agent_session_cwd "$TARGET" 2>/dev/null) || die "nem oldható fel a cwd: $TARGET"
+
+if agent_send_prompt "$TARGET" "$TEXT" "$CWD"; then
+  print "elküldve és ellenőrizve: $TARGET (${#TEXT} karakter)"
+else
+  print -u2 "agent-send-prompt: a szöveg NEM ért célba (kétszer sem): $TARGET"
+  exit 1
+fi

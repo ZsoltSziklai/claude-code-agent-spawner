@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.bridge-relay</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/.claude/agent-queue/bin/bridge-relay.sh</string>
+    </array>
+
+    <!-- A Desktop device-bridge a csatolt mappába ír; a trigger a Mac oldalán ül. -->
+    <key>WatchPaths</key>
+    <array>
+        <string>__HOME__/ClaudeProjects/bridge/requests</string>
+    </array>
+
+    <!-- ⚠️ BIZTONSAGI HALO — 2026-08-31-i eles hiba.
+         A launchd a WatchPaths-esemenyt NEM allitja sorba, ha a job eppen FUT:
+         egyszeruen eldobja. Egy keres, ami egy masik keres feldolgozasa kozben
+         erkezik, igy OROKRE nema maradt — se statusz, se naplo, se ujraprobalas.
+         Merve: a regA03 az elozo keres statuszaval AZONOS masodpercben erkezett,
+         es soha nem indult el; egy nappal korabban ugyanez 5 masodperc resnel
+         hibatlanul lefutott. A WatchPaths marad a gyors valaszido miatt, de
+         egyedul nem eleg: a periodikus futas az, ami garantalja a feldolgozast.
+         A relay ciklusa minden *.json-t vegignez es a nem-`new`-t atugorja,
+         ezert az ismetelt futas olcso es idempotens. -->
+    <key>StartInterval</key>
+    <integer>20</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.claude/agent-queue/bridge.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.claude/agent-queue/bridge.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>LANG</key>
+        <string>hu_HU.UTF-8</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+</dict>
+</plist>

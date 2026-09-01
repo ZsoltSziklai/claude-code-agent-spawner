@@ -1,0 +1,9 @@
+
+# Desktop-híd: a kitöltött whitelist és a bot-token soha nem kerülhet a repóba
+bridge-allow.json
+*.token
+
+# Az agent-worktree-k ide keletkeznek (a sajat rendszerunk hozza letre oket).
+# Munkakornyezet, nem forras — es beagyazott git repok, amiket a `git add -A`
+# gitlinkkent venne fel. 2026-08-26: egyszer meg is tortent.
+.claude/

@@ -1,0 +1,332 @@
+#!/bin/zsh
+# spawn-agent.sh - called by launchd WatchPaths when files appear in ~/.claude/agent-queue/new/
+emulate -L zsh
+setopt nullglob pipefail
+
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+# Config (env-overridable)
+: ${CLAUDE_AGENT_ROOT:=$HOME/ClaudeProjects}
+: ${CLAUDE_AGENT_QUEUE:=$HOME/.claude/agent-queue}
+
+# Remote Control requires a full-scope claude.ai login; CLAUDE_CODE_OAUTH_TOKEN
+# (setup-token / long-lived) is inference-only and silently disables Remote
+# Control in the spawned child. Strip it from the env regardless of where it
+# leaked in from (launchd parent inheritance, etc.).
+unset CLAUDE_CODE_OAUTH_TOKEN
+
+QUEUE_DIR="$CLAUDE_AGENT_QUEUE"
+NEW_DIR="$QUEUE_DIR/new"
+PROC_DIR="$QUEUE_DIR/processing"
+DONE_DIR="$QUEUE_DIR/done"
+FAIL_DIR="$QUEUE_DIR/failed"
+# Agent-inditotta keresek varakoznak itt jovahagyasra (lasd a `requested_by` kaput).
+GATED_DIR="$QUEUE_DIR/gated"
+LOG_FILE="$QUEUE_DIR/spawner.log"
+
+# Shared helpers (live/ registry + modal auto-dismiss). Installed alongside us
+# in $QUEUE_DIR/bin; fall back to our own dir when run straight from the repo.
+for _lib in "$QUEUE_DIR/bin/_agent-lib.sh" "${0:A:h}/bin/_agent-lib.sh"; do
+  if [[ -r "$_lib" ]]; then source "$_lib"; break; fi
+done
+: ${CLAUDE_AGENT_LIVE:=$QUEUE_DIR/live}
+
+mkdir -p "$NEW_DIR" "$PROC_DIR" "$DONE_DIR" "$FAIL_DIR" "$GATED_DIR" "$CLAUDE_AGENT_LIVE"
+
+rotate_log "$LOG_FILE" 2>/dev/null || true
+
+log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LOG_FILE"; }
+
+require_tool() {
+  local label="$1" path="$2"
+  if [[ -z "$path" || ! -x "$path" ]]; then
+    log "ERROR missing tool: $label"
+    exit 1
+  fi
+}
+
+# NEVER name this variable TMUX — tmux reads $TMUX from the environment to find
+# the server socket. If TMUX is already exported (i.e. we run from inside tmux),
+# assigning it clobbers the real socket triple and every tmux call fails with
+# "Socket operation on non-socket". Unset it too, so we always talk to the
+# default server instead of thinking we are nested.
+unset TMUX
+JQ=$(command -v jq 2>/dev/null || true)
+TMUX_BIN=$(command -v tmux 2>/dev/null || true)
+CLAUDE=$(command -v claude 2>/dev/null || true)
+
+require_tool jq "$JQ"
+require_tool tmux "$TMUX_BIN"
+require_tool claude "$CLAUDE"
+
+fail_spec() {
+  local proc_path="$1" uuid="$2" reason="$3"
+  log "FAIL $uuid: $reason"
+  mv "$proc_path" "$FAIL_DIR/$uuid.json" 2>/dev/null || true
+  printf '%s\n' "$reason" > "$FAIL_DIR/$uuid.reason"
+}
+
+# err_return prevents the loop from continuing on a failed command unless we handle it.
+# We do all our error handling explicitly with `continue`, so disable err_return for the loop body.
+setopt no_err_return
+
+for spec in "$NEW_DIR"/*.json; do
+  uuid="${spec:t:r}"   # zsh: :t = tail (basename), :r = root (strip ext)
+  proc_path="$PROC_DIR/$uuid.json"
+
+  if ! mv "$spec" "$proc_path" 2>/dev/null; then
+    log "WARN could not claim $spec (concurrent run?)"
+    continue
+  fi
+
+  log "PROCESS $uuid"
+
+  if ! "$JQ" empty "$proc_path" >/dev/null 2>&1; then
+    fail_spec "$proc_path" "$uuid" "invalid JSON"
+    continue
+  fi
+
+  name=$("$JQ" -r '.name // empty' "$proc_path")
+  cwd=$("$JQ" -r '.cwd // empty' "$proc_path")
+  prompt=$("$JQ" -r '.prompt // empty' "$proc_path")
+  model=$("$JQ" -r '.model // "opus"' "$proc_path")
+  effort=$("$JQ" -r '.effort // "high"' "$proc_path")
+  pm=$("$JQ" -r '.permission_mode // "auto"' "$proc_path")
+  brief=$("$JQ" -r '.brief // true' "$proc_path")
+  worktree=$("$JQ" -r '.worktree // false' "$proc_path")
+  create_cwd=$("$JQ" -r '.create_cwd // false' "$proc_path" 2>/dev/null)
+
+  if [[ ! "$name" =~ ^[a-zA-Z0-9_-]{3,64}$ ]]; then
+    fail_spec "$proc_path" "$uuid" "invalid name: $name (length ${#name})"
+    continue
+  fi
+  if [[ -z "$prompt" ]]; then
+    fail_spec "$proc_path" "$uuid" "empty prompt"
+    continue
+  fi
+  # ⚠️ BAJT, nem karakter. A `${#prompt}` zsh-ban KARAKTERT szamol, igy egy
+  # ekezetes magyar prompt ~8192 karakternel mar 12-14 KB is lehetett — a doksi
+  # viszont vegig "8 KB"-ot igert. A `wc -c` a tenyleges bajtszamot adja.
+  if (( $(printf %s "$prompt" | wc -c) > 8192 )); then
+    fail_spec "$proc_path" "$uuid" "prompt too long (>8KB)"
+    continue
+  fi
+  allowed_root="$CLAUDE_AGENT_ROOT"
+  # Üres cwd → ClaudeProjects root
+  if [[ -z "$cwd" ]]; then
+    cwd="$allowed_root"
+  fi
+  # Relatív cwd → ClaudeProjects alá prefixáljuk (a slash command már ezt küldi,
+  # de védd a direkt JSON-os bemenettől is)
+  if [[ "$cwd" != /* && "$cwd" != ~* ]]; then
+    cwd="$allowed_root/$cwd"
+  fi
+  # Tilde expansion
+  cwd="${cwd/#\~/$HOME}"
+  # ⚠️ ELOSZOR ELLENORZUNK, AZTAN HOZUNK LETRE. A regi sorrend forditva volt: a
+  # `mkdir -p` az engedélylista-ellenorzes ELOTT futott, tehat egy allowlisten
+  # KIVULRE mutato cwd eloszor letrehozta a konyvtarakat, es csak utana bukott —
+  # a rendszer nem allt meg, hanem fel labbal cselekedett.
+  abs_cwd="${cwd:A}"
+  abs_allowed="${allowed_root:A}"
+  if [[ "$abs_cwd" != "$abs_allowed" && "$abs_cwd" != "$abs_allowed"/* ]]; then
+    fail_spec "$proc_path" "$uuid" "cwd outside allowed root ($abs_allowed): $abs_cwd"
+    continue
+  fi
+
+  # ⚠️ NEM LETEZO cwd -> alapbol HIBA, nem nema letrehozas. Egy elgepelt relativ
+  # ut (pl. "myporject") az engedélylistan BELUL van, tehat a korabbi `mkdir -p`
+  # szo nelkul letrehozta uresen, es az agent a projekt helyett egy ures
+  # konyvtarban kezdett dolgozni — a hibas bemenetre csendben rosszat csinaltunk.
+  # Szandekos uj konyvtarhoz a spec `create_cwd: true` mezoje kell.
+  if [[ ! -d "$abs_cwd" ]]; then
+    if [[ "$create_cwd" == "true" ]]; then
+      if ! mkdir -p "$abs_cwd" 2>/dev/null; then
+        fail_spec "$proc_path" "$uuid" "cannot create cwd: $abs_cwd"
+        continue
+      fi
+      log "MKDIR $uuid $abs_cwd"
+    else
+      fail_spec "$proc_path" "$uuid" "cwd does not exist: $abs_cwd (elgépelés? ha szándékos, add meg: \"create_cwd\": true)"
+      continue
+    fi
+  fi
+  cwd="$abs_cwd"   # downstream konzisztencia kedvéért
+  case "$model" in
+    opus|sonnet|haiku|fable) ;;
+    claude-opus-4-7|claude-opus-4-8|'claude-opus-4-7[1m]'|'claude-opus-4-8[1m]') ;;
+    # Claude 5 csalad. A `live/` nyilvantartasbol futo agentek nem esnek at ezen
+    # az ellenorzesen, ezert eddig eszrevetlen maradt, hogy egy UJ spec
+    # `claude-opus-5`-tel elbukott volna — a gyerekek spec-jeben mar az van.
+    claude-opus-5|claude-sonnet-5|claude-fable-5|claude-haiku-4-5) ;;
+    'claude-opus-5[1m]'|'claude-sonnet-5[1m]') ;;
+    *) fail_spec "$proc_path" "$uuid" "invalid model: $model"; continue;;
+  esac
+  case "$effort" in
+    low|medium|high|xhigh|max) ;;
+    *) fail_spec "$proc_path" "$uuid" "invalid effort: $effort"; continue;;
+  esac
+  case "$pm" in
+    # ⚠️ A mai CLI valasztéka: acceptEdits, auto, bypassPermissions, manual,
+    # dontAsk, plan. A `default` NINCS koztuk — a spawn 3 mp-en belul elhal, es a
+    # hibauzenet auth-hibara terel. A `manual` viszont hianyzott innen.
+    auto|acceptEdits|plan|dontAsk|manual|bypassPermissions) ;;
+    *) fail_spec "$proc_path" "$uuid" "invalid permission_mode: $pm"; continue;;
+  esac
+
+  # worktree=true csak git repo-ban használható (claude --worktree git-et vár)
+  if [[ "$worktree" == "true" ]]; then
+    if ! (cd "$cwd" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
+      fail_spec "$proc_path" "$uuid" "worktree=true requires a git repo at cwd: $cwd"
+      continue
+    fi
+  fi
+
+  # --- KAPU: agent-inditotta keresek ---------------------------------------
+  # A queue eddig KAPUZATLAN volt. Amig a felhasznalo maga irt bele, ez vedheto
+  # volt ("az inditas maga a jovahagyas"). Amint egy AGENT ir bele, az ugyanolyan
+  # felugyelet nelkuli beviteli csatorna, mint a hid — csak kapu nelkul.
+  # Ezert: ha a spec `requested_by`-t hoz, Telegram-jovahagyas kell, ugyanazon a
+  # koron. A felhasznalo sajat, kezi indítasa (nincs `requested_by`) valtozatlan.
+  requested_by=$("$JQ" -r '.requested_by // empty' "$proc_path")
+  approved=$("$JQ" -r '.approved // false' "$proc_path")
+  if [[ -n "$requested_by" && "$approved" != "true" ]]; then
+    for _bl in "$QUEUE_DIR/bin/_bridge-lib.sh" "${0:A:h}/bin/_bridge-lib.sh"; do
+      [[ -r "$_bl" ]] && { source "$_bl"; break }
+    done
+    if ! typeset -f tg_send_message >/dev/null || ! tg_ready 2>/dev/null; then
+      fail_spec "$proc_path" "$uuid" "requested_by=$requested_by, de a Telegram-kapu nem elérhető — jóváhagyás nélkül nem indítok"
+      continue
+    fi
+    mv "$proc_path" "$GATED_DIR/$uuid.json" || {
+      fail_spec "$proc_path" "$uuid" "nem sikerült a gated/ alá tenni"; continue }
+    _txt="🧩 <b>AGENT INDÍTANA AGENTET</b>
+kérte: <b>${requested_by}</b>
+
+név ......... ${name}
+mappa ....... ${cwd}
+worktree .... $([[ "$worktree" == "true" ]] && print "igen, saját ág" || print "NEM — a mappában dolgozik")
+model ....... ${model} / ${effort}
+jogosultság . ${pm}
+
+FELADAT
+$(print -r -- "$prompt" | head -c 600)
+
+Elutasítás esetén semmi nem indul."
+    _mk='{"inline_keyboard":[[{"text":"▶️ Indítás","callback_data":"qa:'"$uuid"'"},{"text":"✖️ Elutasítás","callback_data":"qn:'"$uuid"'"}]]}'
+    if tg_send_message "$_txt" "$_mk" >/dev/null 2>&1; then
+      log "GATED $uuid name=$name requested_by=$requested_by (jóváhagyásra vár)"
+    else
+      log "WARN $uuid a jóváhagyó üzenet nem ment ki — a spec a gated/ alatt marad"
+    fi
+    continue
+  fi
+
+  # Auto-suffix on collision — frissíti MAGÁT a $name-et (single source of truth),
+  # így a Remote Control név, CLAUDE_AGENT_NAME env, JSON .name és tmux session
+  # mind konzisztens marad.
+  original_name="$name"
+  suffix=2
+  collision_ok=true
+  while "$TMUX_BIN" has-session -t "agent-$name" 2>/dev/null; do
+    if (( suffix > 99 )); then
+      collision_ok=false
+      break
+    fi
+    name="${original_name}-${suffix}"
+    (( suffix++ ))
+  done
+  if ! $collision_ok; then
+    fail_spec "$proc_path" "$uuid" "too many tmux collisions for agent-$original_name (>99 suffixes)"
+    continue
+  fi
+  tmux_session="agent-$name"
+  if [[ "$name" != "$original_name" ]]; then
+    # A spec JSON-ját is frissítjük, hogy a downstream find_spec megtalálja
+    "$JQ" --arg n "$name" '.name = $n' "$proc_path" > "$proc_path.tmp" \
+      && mv "$proc_path.tmp" "$proc_path"
+    log "AUTO-SUFFIX $uuid: $original_name -> $name (JSON .name updated)"
+  fi
+
+  cmd_args=("--remote-control" "$name"
+            "--permission-mode" "$pm"
+            "--model" "$model"
+            "--effort" "$effort")
+  [[ "$brief" == "true" ]] && cmd_args+=("--brief")
+  # --chrome: enable Claude in Chrome integration (öröklődést a fő session-től NEM kapja,
+  # explicit flag kell hogy a spawnolt agent is használhassa)
+  cmd_args+=("--chrome")
+  # --worktree opcionális positional arg — explicit =name szintaxis kell,
+  # különben a következő pozicionális arg (a promptunk) lesz a worktree neve.
+  [[ "$worktree" == "true" ]] && cmd_args+=("--worktree=$name")
+
+  # Build shell-safe command string for tmux to evaluate.
+  # Export CLAUDE_AGENT_NAME so the spawned claude (and its Bash tool calls)
+  # know their own session name → /new-agent inside the child can prefix its
+  # own children with this name (parent-child naming).
+  shell_cmd="cd ${(qq)cwd} && export LANG=${(qq)${CLAUDE_AGENT_LANG:-en_US.UTF-8}} && export CLAUDE_AGENT_NAME=${(qq)name} && ${(qq)CLAUDE}"
+  for arg in "${cmd_args[@]}"; do
+    shell_cmd+=" ${(qq)arg}"
+  done
+  shell_cmd+=" ${(qq)prompt}"
+
+  if ! "$TMUX_BIN" new-session -d -s "$tmux_session" "$shell_cmd"; then
+    fail_spec "$proc_path" "$uuid" "tmux new-session failed"
+    continue
+  fi
+
+  # Várjunk 3 másodpercet, és ellenőrizzük hogy a benne futó claude
+  # nem halt-e meg azonnal (pl. invalid flag, auth, hiányzó env, stb).
+  sleep 3
+  if ! "$TMUX_BIN" has-session -t "$tmux_session" 2>/dev/null; then
+    fail_spec "$proc_path" "$uuid" "child claude exited within 3s (check flags / auth)"
+    continue
+  fi
+
+  # One-shot startup modals (--chrome confirmation, fullscreen renderer, ...) —
+  # nobody is attached to answer them, so answer them here.
+  if typeset -f auto_dismiss_modals >/dev/null; then
+    auto_dismiss_modals "$tmux_session"
+  elif "$TMUX_BIN" capture-pane -t "$tmux_session" -p 2>/dev/null | grep -q "Enter to confirm"; then
+    "$TMUX_BIN" send-keys -t "$tmux_session" Enter
+    log "AUTO-ENTER chrome confirmation for $uuid"
+    sleep 1
+  fi
+
+  # Register as "should be running" → agent-child-watchdog.sh restores it
+  # (with --resume) after a reboot or crash. /kill-agent + /close-agent
+  # unregister, so a deliberately closed agent stays closed.
+  if typeset -f register_agent >/dev/null; then
+    # ⚠️ Nem `A && B || C`: ha a sikeres ag naplozasa bukna (tele lemez, nem
+    # irhato log), a `||` ag IS lefutna, es a "REGISTERED" utan rogton jonne a
+    # "WARN could not register" — ket ellentmondo sor ugyanarrol.
+    if register_agent "$proc_path" "$name"; then
+      log "REGISTERED $name (live/)"
+    else
+      log "WARN could not register $name in live/"
+    fi
+  fi
+
+  log "SPAWNED $uuid name=$name tmux=$tmux_session"
+  # A specbe a KIBONTOTT, abszolut cwd kerul vissza. Enelkul a spec megorzi a
+  # literal `~`-t (a fenti expanzio csak a futo valtozot erinti), es minden
+  # kesobbi olvaso — lezaras, watchdog — egy nem letezo utat kap.
+  # 2026-08-29: emiatt egy `merge`-os lezaras atlepte a beolvasztast.
+  if "$JQ" --arg c "$cwd" '.cwd = $c' "$proc_path" > "$proc_path.tmp" 2>/dev/null; then
+    mv "$proc_path.tmp" "$proc_path"
+  else
+    rm -f "$proc_path.tmp"
+  fi
+  mv "$proc_path" "$DONE_DIR/$uuid.json"
+  cat > "$DONE_DIR/$uuid.result" <<EOF
+{
+  "started_at": "$(date -u +%FT%TZ)",
+  "tmux_session": "$tmux_session",
+  "remote_session_name": "$name",
+  "cwd": "$cwd",
+  "model": "$model",
+  "effort": "$effort",
+  "permission_mode": "$pm"
+}
+EOF
+done

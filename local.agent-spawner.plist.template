@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.agent-spawner</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/.claude/agent-queue/bin/claude-agent-spawner</string>
+    </array>
+
+    <key>WatchPaths</key>
+    <array>
+        <string>__HOME__/.claude/agent-queue/new</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>ThrottleInterval</key>
+    <integer>1</integer>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.claude/agent-queue/launchd.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.claude/agent-queue/launchd.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+</dict>
+</plist>

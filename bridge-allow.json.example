@@ -1,0 +1,24 @@
+{
+  "_comment": "Másold ~/.claude/agent-queue/bridge-allow.json néven és töltsd ki. Hiányzó config = zárt kapu: nem indul semmi.",
+
+  "user_id": 0,
+  "_user_id": "A SAJÁT Telegram user-azonosítód. CSAK ez a fiók hagyhat jóvá indítást. Ez a legfontosabb egyetlen mező.",
+
+  "parents": [],
+  "_parents": "Mely agentekből szabad leszármaztatni, pl. [\"mac-main\", \"mac-main-infra\"]. Üres lista = minden kérés elutasítva.",
+
+  "cwd_root": "",
+  "_cwd_root": "A megengedett gyökér, pl. /Users/<te>/ClaudeProjects. Ezen kívülre mutató cwd elutasítva.",
+
+  "gate": "approval",
+  "_gate": "approval = semmi nem indul a Telegram-gombnyomás előtt. audit = azonnal indul, és utólag jön az értesítés a csatolmánnyal.",
+
+  "max_pending_hours": 24,
+  "_max_pending_hours": "Ennyi óra után a jóváhagyatlan kérés magától lejár és archiválódik.",
+
+  "about": {},
+  "_about": "Rövid leírás szülőnként, pl. {\"mac-main\": \"a command center\"}. A híd ezt teszi az agents.json-be, és a Desktop ebből választ szülőt — enélkül vakon tippel. A kulcsok a `parents` listából valók.",
+
+  "stall_minutes": 15,
+  "_stall_minutes": "Ennyi perc tétlenség után szólunk, ha egy híd-agentnek MÉG NINCS jelentése. Tipikusan azt jelenti, hogy kérdéssel fejezte be a kört — arra viszont a saját sessionjében nincs kitől választ kapnia."
+}

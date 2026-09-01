@@ -1,0 +1,38 @@
+name: tests
+
+# A projekt macOS-only (launchd), ezert a CI is macOS-on fut: ha itt zold,
+# az arrol szol, ami a felhasznalonal is futni fog.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fuggosegek
+        run: |
+          command -v jq  >/dev/null || brew install jq
+          command -v zsh >/dev/null || { echo "zsh hianyzik"; exit 1; }
+          zsh --version
+          jq --version
+
+      - name: Szintaxis — minden szkript
+        run: |
+          fail=0
+          for f in $(git ls-files); do
+            head -1 "$f" 2>/dev/null | grep -q '^#!' || continue
+            if zsh -n "$f"; then
+              echo "  ok   $f"
+            else
+              echo "  FAIL $f"; fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Fust-teszt (tests/smoke.sh)
+        run: zsh tests/smoke.sh
