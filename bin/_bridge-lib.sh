@@ -385,6 +385,18 @@ bridge_detect_stalled() {
   now=$(date -u +%s)
   for name in ${(f)"$(jq -r 'keys[]' "$BRIDGE_SPAWNED" 2>/dev/null)"}; do
     [[ -n "$name" ]] || continue
+    # ⚠️ A PARANCSKOZPONT SOHA nem "beragadt hid-agent". 2026-09-03: a gyoker
+    # agent egy 2026-08-29-i, reg halott keres-id-vel bent maradt a
+    # nyilvantartasban, a beragadas-figyelo tetlennek latta, es NUDGE-olta — az
+    # emlekezteto szovegevel egyutt, ami azt allitja, hogy "nincs kihez
+    # visszakerdezned". A parancskozpontnal ez pont forditva igaz: ott UL a
+    # felhasznalo. Az uzenet a beszelgeteset szakitja felbe, es olyan
+    # jelentes-fajl irasara szolitja fel, aminek nincs cimzettje.
+    # A gyokeret a watchdog kezeli, nem a hid — ugyanaz a hatar, mint a
+    # `continue_agent` feltamasztas-tilalmanal.
+    if [[ "$name" == "${ROOT_AGENT_NAME:-mac-main}" ]]; then
+      continue
+    fi
     id=$(jq -r --arg n "$name" '.[$n].request // empty' "$BRIDGE_SPAWNED" 2>/dev/null)
     [[ "$id" =~ '^[A-Za-z0-9._-]{1,48}$' ]] || continue
 

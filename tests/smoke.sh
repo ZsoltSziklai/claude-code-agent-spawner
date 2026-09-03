@@ -600,6 +600,16 @@ no_  "lejárt némítás után újra szól" \
      env BRIDGE_STATE="$MST" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; bridge_stall_muted proba-agent >/dev/null'
 is   "a lejárt bejegyzést kitakarítja" \
      "$(jq -r '(.stall_mute // {}) | has("proba-agent")' "$MST")" "false"
+# ⚠️ 2026-09-03: a gyoker agent (parancskozpont) egy reg halott keres-id-vel bent
+# maradt a nyilvantartasban, a figyelo tetlennek latta, es NUDGE-olta. Az
+# emlekezteto azt allitja, hogy "nincs kihez visszakerdezned" — a
+# parancskozpontnal ez pont forditva igaz, ott ul a felhasznalo. Az uzenet a
+# beszelgeteset szakitotta felbe. A gyokeret a watchdog kezeli, nem a hid.
+# ⚠️ A gyoker-ellenorzes HAROM helyen szerepel a fajlban (feltamasztas-tilalom,
+# lezaras, beragadas-figyelo). A puszta grep barmelyikre illeszkedik, tehat a
+# figyelo agabol kiveve is zold maradna. A FUGGVENYEN BELUL kell allitani.
+yes_ "a figyelő kihagyja a parancsközpontot" \
+     eval 'sed -n "/^bridge_detect_stalled()/,/^}/p" "$ROOT/bin/_bridge-lib.sh" | grep -q ROOT_AGENT_NAME'
 yes_ "a figyelő nézi a némítást" \
      grep -q 'bridge_stall_muted "$name"' "$ROOT/bin/_bridge-lib.sh"
 # Harom idoablak: 8 ora / 1 nap / 1 het. A gombot es a POLLER-agat egyutt
@@ -998,7 +1008,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=223}
+: ${SMOKE_EXPECTED:=224}
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1
