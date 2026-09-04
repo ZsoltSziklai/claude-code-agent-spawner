@@ -36,9 +36,19 @@ jóváhagyással.
 - **Emelt jogosultság figyelmeztetéssel** — a `bypassPermissions` kérés a
   jóváhagyó üzeneten külön blokkot kap.
 
+### Válaszidő
+
+- A Telegram-gombnyomás **másodperceken belül** feldolgozódik: a poller a 30
+  másodperces cikluson belül 25 másodpercig figyel, így gyakorlatilag
+  folyamatosan nyitva van egy hosszú lekérdezés. Korábbi, rövidebb várakozásnál
+  körönként ~15 másodperc holtidő maradt, ami alatt a felhasználó joggal hitte,
+  hogy a gomb nem hatott — és újra nyomott.
+- Az elavult (már nem függőben lévő) gombnyomás nem csinál semmit, de **szól
+  róla**, és leveszi a gombokat, hogy ne lehessen újra rájuk nyomni.
+
 ### Tesztelés
 
-- 223 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
+- 225 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
 - Végigjátszható regressziós forgatókönyv (`tests/REGRESSION-RUN.md`), amely a
   hidat, a jóváhagyást, a valódi munkát és a lezárást élesben méri.
 

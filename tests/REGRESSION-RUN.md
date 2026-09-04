@@ -161,7 +161,7 @@ amit kér, az stimmel-e.
 | CLI-kör G2/G3 | `▶️ Indítás` / `✖️ Elutasítás` | a CLI-agent kéri; a vezető agent szól, mikor |
 | Z1 (CLI-agent lezárása) | `▶️ Indítás` | |
 | bármikor: `🔔 Emlékeztetem` | **SOHA ne nyomd** | ha ez megjelenik, egy agent beragadt → a teszt elbukott |
-| bármikor: `🔕 8 óra / 1 nap / 1 hét` | csak NEM-teszt agenten | a `dsolar-*` és `dnissan-*` a te éles munkád, nem a teszté |
+| bármikor: `🔕 8 óra / 1 nap / 1 hét` | csak NEM-teszt agenten | az éles, hosszan futó agentjeid nem a teszt részei |
 
 ---
 

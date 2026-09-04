@@ -47,8 +47,8 @@ fi
 # koronkent ~15 mp HOLTIDO maradt, amikor a gombnyomas egyszeruen allt a sorban.
 # Merve a naplobol: 32 ismetelt gombnyomas, MEDIAN 33 masodperces idokozzel —
 # ez nem remego ujj, hanem "megnyomtam, nem tortent semmi, ujra megnyomtam".
-# A `napelem-sema2`-nel a felhasznalo 35 masodpercig nem kapott semmilyen
-# visszajelzest. A 25 mp-es varakozas a 30 mp-es ciklusban gyakorlatilag
+# Egy mert esetben a felhasznalo 35 masodpercig nem kapott semmilyen
+# visszajelzest, ezert ujra nyomott. A 25 mp-es varakozas a 30 mp-es ciklusban gyakorlatilag
 # folyamatos figyelest ad: a holtido ~2-5 mp-re csokken.
 : ${BRIDGE_POLL_TIMEOUT:=25}
 if (( BRIDGE_POLL_TIMEOUT >= BRIDGE_HTTP_MAX_TIME )); then

@@ -285,7 +285,7 @@ yes_ "a queue-kapu a spec NEVÉBŐL dönti el a teszt-voltot" \
 yes_ "a prefixelt spec-nevet is felismeri" \
      eval '[[ "mac-main-regG2-20260901i" == (reg[A-Z]*|*-reg[A-Z]*) ]]'
 no_  "éles nevű kapuzott kérést viszont nem" \
-     eval '[[ "mac-main-dsolar-mac" == (reg[A-Z]*|*-reg[A-Z]*) ]]'
+     eval '[[ "mac-main-eles-munka" == (reg[A-Z]*|*-reg[A-Z]*) ]]'
 yes_ "és a kód is ezt a mintát használja" \
      grep -q 'reg\[A-Z\]\*|\*-reg\[A-Z\]\*' "$ROOT/bin/bridge-poller.sh"
 yes_ "az action fehérlistázott" \
@@ -371,7 +371,7 @@ print "\n\033[1magent-send-prompt: szűk, auditálható küldés\033[0m"
 SP="$ROOT/bin/agent-send-prompt"
 yes_ "a wrapper létezik és futtatható" test -x "$SP"
 # ⚠️⚠️ A CELNEVEK KITALALTAK, ES EZT KI IS KENYSZERITJUK. Elso valtozatban VALODI
-# agent-neveket hasznaltam (`mac-main-dsolar-mac`, `mac-main`), abbol a hibas
+# agent-neveket hasznaltam (egy eles agentet es a `mac-main`-t), abbol a hibas
 # feltevesbol, hogy a hataror ugyis elutasitja oket. A MUTACIOS proba viszont
 # eppen a hatarort iktatja ki — es a teszt akkor ELO sessionbe irt: a `mac-main`
 # parancskozpontba tenyleg bekerult egy teszt-uzenet. A hatar-ellenorzes a
@@ -727,7 +727,7 @@ nev() {                              # $1=szulo $2=keres-id -> a kepzett nev
 yes_ "a kérés-id dátuma nem vész el" \
      grep -q '20260829$' <<< "$(nev mac-main rgC1-merge-elokeszites-20260829)"
 is   "hosszú szülővel is belefér a 64-be" \
-     "$(( $(nev mac-main-sziklaizsolthu rgC1-merge-elokeszites-20260829 | wc -c) - 1 <= 64 ))" "1"
+     "$(( $(nev mac-main-hosszabb-szulonev rgC1-merge-elokeszites-20260829 | wc -c) - 1 <= 64 ))" "1"
 no_  "nincs fix 24-es vágás a kódban" \
      grep -q 'cut -c1-24' "$ROOT/bin/_bridge-lib.sh"
 # ⚠️ A fenti ONMAGABAN gyenge: egy `_max=24` visszairas nem tartalmazza a regi

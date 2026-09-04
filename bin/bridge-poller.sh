@@ -2,7 +2,7 @@
 # bridge-poller.sh — a Telegram-jóváhagyást veszi át és indít.
 #
 # A Bot API `getUpdates`-et a Mac KIFELÉ hívja, LONG POLLINGGAL
-# (`BRIDGE_POLL_TIMEOUT`, ma 15 mp): a kapcsolat nyitva marad, és a gombnyomás
+# (`BRIDGE_POLL_TIMEOUT`, ma 25 mp): a kapcsolat nyitva marad, és a gombnyomás
 # ~1 másodpercen belül megérkezik. Rövid pollingnál (`timeout=0`) a nyomásról
 # csak a következő 30 mp-es tickkor értesültünk volna: nincs szükség publikus végpontra, webhookra vagy bejövő
 # tűzfalnyitásra. A laptop nem kerül ki sehova.
@@ -171,7 +171,7 @@ if [[ -d "$TESTCB_DIR" ]]; then
       # SYNTHETIC-DENY-vel allt meg. A tesztem azert volt zold, mert KITALALT
       # nevet hasznaltam a valosagos, prefixelt alak helyett.
       # A `reg` + NAGYBETU mintat keressuk barhol: a teszt-agentek regA/regB/…/regG
-      # alakuak, az eles agentek (dsolar-mac, dnissan-adat) nem tartalmazzak.
+      # alakuak; az eles munka agentnevei ezt a mintat nem tartalmazzak.
       _gname=$(jq -r '.name // empty' "$CLAUDE_AGENT_QUEUE/gated/$_rid.json" 2>/dev/null)
       [[ "$_gname" == (reg[A-Z]*|*-reg[A-Z]*) ]] && _istest=true
     else

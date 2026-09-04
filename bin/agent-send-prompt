@@ -25,7 +25,7 @@ ME="${CLAUDE_AGENT_NAME:-}"
 [[ -n "$ME" ]] || die "nincs CLAUDE_AGENT_NAME — ez a session nem az agent-rendszerből indult"
 
 # ⚠️ A HATAR: csak LEFELE a fadban. Nem eleg az `agent-*` prefix — az a
-# felhasznalo eles agentjeit (dsolar-*, dnissan-*) is beengedne. Aki elinditotta,
+# felhasznalo eles, hosszan futo agentjeit is beengedne. Aki elinditotta,
 # az uzenhet neki; masnak nem.
 [[ "$TARGET" == "$ME-"* ]] \
   || die "csak a saját leszármazottadnak küldhetsz ($ME-*), ez nem az: $TARGET"
