@@ -644,6 +644,13 @@ is   "a poll-timeout a curl kerete ALATT van" \
      "$(( BRIDGE_POLL_TIMEOUT < BRIDGE_HTTP_MAX_TIME ))" "1"
 is   "és nem nulla (tényleg long polling)" \
      "$(( BRIDGE_POLL_TIMEOUT > 0 ))" "1"
+# ⚠️ 2026-09-04: a 15 mp-es varakozas NEM volt eleg. A poller 30 mp-enkent indul,
+# tehat koronkent ~15 mp HOLTIDO maradt, amikor a gombnyomas allt a sorban.
+# Merve a naplobol: 32 ismetelt gombnyomas, MEDIAN 33 mp-es idokozzel — ez nem
+# remego ujj, hanem "megnyomtam, nem tortent semmi, ujra megnyomtam". A
+# varakozasnak a 30 mp-es ciklus TOBBSEGET le kell fednie.
+is   "a várakozás lefedi a ciklus többségét (>=20 mp)" \
+     "$(( BRIDGE_POLL_TIMEOUT >= 20 ))" "1"
 # A KOMMENT emliti a `timeout=0`-t magyarazatkent — a VEGREHAJTHATO hivasra
 # szurunk, kulonben a sajat magyarazatunk buktatna el a tesztet.
 no_  "a poller nem kérdez timeout=0-val" \
@@ -1008,7 +1015,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=224}
+: ${SMOKE_EXPECTED:=225}
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1

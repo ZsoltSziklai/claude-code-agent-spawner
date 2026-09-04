@@ -225,6 +225,26 @@ szándékosan hiányzott (egy WatchPaths-trigger eldobása végleges lett volna)
 periodikus futással viszont a kihagyott kör ingyen van, a párhuzamos futás
 viszont nem — enélkül két példány ugyanazt a lezárást hajthatná végre kétszer.
 
+## Kiből lehet forkolni — a `parents` lista
+
+A `parent` mező **csak** olyan nevet vehet fel, ami a `bridge-allow.json`
+`parents` listájában szerepel. Ez a lista nem csak gyökér-agenteket tartalmazhat:
+**egy futó leszármazott is felvehető**, ha rendszeresen kell belőle új ágat
+nyitni.
+
+Amit ilyenkor ellenőrizni kell: a híd a szülő **session-azonosítóját** a
+`live/` nyilvántartásból oldja fel (`agent_session_id`). Ha az agent nincs ott —
+például fork volt, azokat szándékosan nem élesztjük újra —, akkor a
+felvétele önmagában nem elég, a fork nem tud elindulni.
+
+```bash
+# ellenőrzés felvétel előtt:
+zsh -c 'source ~/.claude/agent-queue/bin/_agent-lib.sh; agent_session_id <agent-név>'
+```
+
+Folytatni és lezárni ezzel szemben **minden** whitelistázott gyökérből származó
+agentet lehet — ahhoz nem kell a `parents` listán szerepelnie.
+
 ## `resume` — mennyit örököljön a gyerek
 
 | érték | mit kap a gyerek |

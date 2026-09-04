@@ -28,7 +28,7 @@ fi
 # beragadt lekérdezés után 5 mp maradt a következő indításig, tehát a két
 # példány gyakorlatilag összeért. Mérve: 5 db `curl: (28) Operation timed out
 # after 25s` a bridge.stderr.log-ban (2026-08-09 és 08-10 hajnalán).
-: ${BRIDGE_HTTP_MAX_TIME:=20}
+: ${BRIDGE_HTTP_MAX_TIME:=28}
 # Külön connect-timeout: halott hálózaton a kapcsolatépítés ne egye meg a
 # teljes keretet — így a lekérdezés 10 mp-en belül elbukik és újrapróbálható.
 : ${BRIDGE_HTTP_CONNECT_TIMEOUT:=10}
@@ -43,7 +43,14 @@ fi
 #
 # ⚠️ MARADJON a curl `--max-time` ALATT, kulonben a curl vagja el a kapcsolatot,
 # mielott a Telegram valaszolna — es minden kor egy hamis timeout lenne.
-: ${BRIDGE_POLL_TIMEOUT:=15}
+# ⚠️ 2026-09-04: a 15 mp NEM VOLT ELEG. A poller 30 mp-enkent indul, tehat
+# koronkent ~15 mp HOLTIDO maradt, amikor a gombnyomas egyszeruen allt a sorban.
+# Merve a naplobol: 32 ismetelt gombnyomas, MEDIAN 33 masodperces idokozzel —
+# ez nem remego ujj, hanem "megnyomtam, nem tortent semmi, ujra megnyomtam".
+# A `napelem-sema2`-nel a felhasznalo 35 masodpercig nem kapott semmilyen
+# visszajelzest. A 25 mp-es varakozas a 30 mp-es ciklusban gyakorlatilag
+# folyamatos figyelest ad: a holtido ~2-5 mp-re csokken.
+: ${BRIDGE_POLL_TIMEOUT:=25}
 if (( BRIDGE_POLL_TIMEOUT >= BRIDGE_HTTP_MAX_TIME )); then
   BRIDGE_POLL_TIMEOUT=$(( BRIDGE_HTTP_MAX_TIME > 5 ? BRIDGE_HTTP_MAX_TIME - 5 : 0 ))
 fi
