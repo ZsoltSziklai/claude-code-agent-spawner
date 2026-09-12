@@ -563,9 +563,29 @@ auto_dismiss_modals() {
         tmux send-keys -t "$sess" "1" 2>/dev/null
       fi
       sleep 1; tmux send-keys -t "$sess" Enter 2>/dev/null; sleep 3; continue
+    elif [[ "$pane" == *"Is this a project you created or one you trust"* \
+         || "$pane" == *"Yes, I trust this folder"* ]]; then
+      # ⚠️ EZ A PARBESZED MEGOLTE A SAJAT AGENTJEINKET (2026-09-12). Az alabbi
+      # generikus ag barmire Entert nyomott, amin "Enter to confirm" szerepel —
+      # a bizalmi ablakon viszont a kijelolt valasz a `❯ No, exit`, tehat az
+      # Enter KILEPTETTE a claude-ot. Ket fork halt meg igy ~31 masodperc alatt,
+      # es a naplo "nem allt fel idoben"-t irt: mi oltuk meg, nem lassu volt.
+      #
+      # Es NEM is szabad megvalaszolnunk: azt, hogy egy konyvtar megbizhato-e,
+      # a FELHASZNALO donti el. Egy agent, aki magat hatalmazza fel egy uj
+      # munkakonyvtar olvasasara/irasara/futtatasara, pont azt a kaput keruli
+      # meg, ami miatt a parbeszed letezik. Ezert: megallunk es szolunk.
+      return 3
     elif [[ "$pane" == *"Enter to confirm"* ]]; then
-      # generic (e.g. the --chrome first-run confirmation)
-      tmux send-keys -t "$sess" Enter 2>/dev/null; sleep 2; continue
+      # ⚠️ SZUKITVE. Ez az ag korabban BARMILYEN "Enter to confirm" feliratu
+      # ablakra vakon Entert nyomott. Egy ismeretlen parbeszed alapertelmezese
+      # lehet romboló (a bizalmi ablake epp a kilepes volt), ezert csak az
+      # ISMERT, veszelytelen megerositeseket nyugtazzuk.
+      if [[ "$pane" == *"fullscreen"* || "$pane" == *"Chrome"* || "$pane" == *"chrome"* ]]; then
+        tmux send-keys -t "$sess" Enter 2>/dev/null; sleep 2; continue
+      fi
+      # Ismeretlen modal: NEM tippelunk. A hivo dontse el, mit kezd vele.
+      return 4
     fi
     # Nincs ismert modal. Ha a session mar a beviteli sorat mutatja, keszen
     # vagyunk; kulonben MEG TOLTODIK — varunk, nem adjuk fel.

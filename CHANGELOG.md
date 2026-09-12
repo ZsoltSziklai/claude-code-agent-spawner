@@ -3,6 +3,24 @@
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
 
+## [1.0.1] — 2026-09-12
+
+### Javítva
+
+- **A modál-kezelő megölhette a saját agentjét.** A generikus ág bármilyen
+  „Enter to confirm" feliratú ablakra Entert nyomott; a Claude Code bizalmi
+  párbeszédében viszont a kijelölt válasz a **`No, exit`**, tehát az Enter
+  kiléptette a frissen indult forkot. Mostantól a bizalmi kérdést felismerjük,
+  **nem válaszoljuk meg** — ez a felhasználó döntése —, és érthető hibával
+  állunk meg. Ismeretlen párbeszédre sem tippelünk.
+- **A hibaüzenet hazudott.** Ha a session megszűnt, a készenlét-figyelő
+  „nem állt fel időben"-t írt, holott a folyamat meghalt. A kettő most külön
+  ág, és a halál okát a képernyő utolsó képe mutatja.
+- **A halál oka eddig elveszett**: a tmux a parancs kilépésekor megszüntette a
+  sessiont. A pane mostantól `remain-on-exit`-tel túléli.
+- **A bukás `failed` státuszt kap**, nem `spawned`-et — a Desktop a `spawned`-et
+  sikernek olvassa. Az indok a beszédes hibasor, nem az utolsó képernyő-töredék.
+
 ## [1.0.0] — 2026-09-01
 
 Az első nyilvános kiadás. Háttérben futó Claude Code agentek indítása,
@@ -48,8 +66,9 @@ jóváhagyással.
 
 ### Tesztelés
 
-- 225 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
+- 234 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
 - Végigjátszható regressziós forgatókönyv (`tests/REGRESSION-RUN.md`), amely a
   hidat, a jóváhagyást, a valódi munkát és a lezárást élesben méri.
 
 [1.0.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.0.0
+[1.0.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.0.1

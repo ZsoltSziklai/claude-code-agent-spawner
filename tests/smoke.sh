@@ -309,6 +309,39 @@ yes_ "Telegram-hiba esetén is feldolgozza" \
 yes_ "a gombos üzenet szövege lemezre kerül" \
      grep -q 'print -r -- "$btn" > "$REQ_DIR/$id.button.txt"' "$ROOT/bin/bridge-relay.sh"
 
+print "\n\033[1mbizalmi párbeszéd: nem mi döntünk helyette\033[0m"
+# ⚠️ 2026-09-12, ELES HIBA. A modal-kezelo generikus aga BARMILYEN "Enter to
+# confirm" feliratu ablakra vakon Entert nyomott. A Claude Code bizalmi
+# parbeszedeben viszont a kijelolt valasz a `❯ No, exit` — az Enter tehat
+# KILEPTETTE a forkot. Ket agent halt meg igy ~31 mp alatt, es a naplo
+# "nem allt fel idoben"-t irt: MI oltuk meg, nem lassu volt.
+yes_ "a bizalmi párbeszédet felismerjük" \
+     grep -q 'Is this a project you created or one you trust' "$ROOT/bin/_agent-lib.sh"
+# ⚠️ `grep -qv X` azt jelenti: "van sor X NELKUL" — nem azt, hogy egyik sem
+# tartalmazza. Az elso valtozat ezert HAMIS ZOLD volt: a mutacio (az Enter
+# visszatevese) atment rajta. Tagadott `grep -q` kell.
+no_  "és NEM nyomunk rá semmit (a hívóra bízzuk)" \
+     eval 'sed -n "/Is this a project you created/,/return 3/p" "$ROOT/bin/_agent-lib.sh" | grep -q send-keys' 
+yes_ "a generikus Enter csak ISMERT ablakra megy" \
+     eval 'sed -n "/Enter to confirm/,/return 4/p" "$ROOT/bin/_agent-lib.sh" | grep -q "fullscreen"' 
+yes_ "ismeretlen modálra nem tippelünk" \
+     grep -q 'return 4' "$ROOT/bin/_agent-lib.sh"
+yes_ "a fork külön jelenti a bizalmi akadályt" \
+     grep -q 'TRUST-REQUIRED' "$ROOT/bin/fork-agent"
+
+print "\n\033[1mhalál vs. lassúság — külön üzenet\033[0m"
+# A capture-pane akkor is elbukik, ha a session MEGSZUNT. A regi `|| break`
+# ilyenkor is "nem allt fel idoben"-t iratott ki, es ez rejtette el a valodi okot.
+yes_ "a ciklus figyeli, hogy él-e még a session" \
+     grep -q 'has-session -t "agent-$NAME" 2>/dev/null; then _died=1' "$ROOT/bin/fork-agent"
+yes_ "halálnál külön ág van, a pane utolsó képével" \
+     grep -q 'a session MEGSZŰNT, mielőtt készen állt volna' "$ROOT/bin/fork-agent"
+yes_ "a pane túléli a kilépést (remain-on-exit)" \
+     grep -q 'set-option -t "agent-$NAME" remain-on-exit on' "$ROOT/bin/fork-agent"
+# ⚠️ A Desktop a `spawned`-et sikernek olvassa, ezert a bukas NEM lehet spawned.
+yes_ "a hibaindok a beszédes sorból jön, nem a tail -1-ből" \
+     grep -q "grep -m1 -E '\^(fork-agent|spawner|agent-close-tree):'" "$ROOT/bin/_bridge-lib.sh"
+
 print "\n\033[1ma kézbesítés-ellenőrzés csak FRISS átiratot fogad el\033[0m"
 # ⚠️ 2026-09-01, ELES HIBA. Az ellenorzes a projekt-konyvtar OSSZES atiratat
 # nezte — abban viszont a KORABBI korok atiratai is ott vannak (merve: 14 fajl),
@@ -1015,7 +1048,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=225}
+: ${SMOKE_EXPECTED:=234}
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1

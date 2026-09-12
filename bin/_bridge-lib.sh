@@ -1039,7 +1039,14 @@ run_request() {                      # $1 = id, $2 = normalizált kérés JSON
       || _msg=$(print -r -- "$out" | head -1)
     set_status "$id" spawned "${_msg}$([[ -n "$BRIDGE_LAST_NAME" ]] && print -n "  |  $(attach_hint "$BRIDGE_LAST_NAME")")"
   else
-    set_status "$id" failed "$(print -r -- "$out" | tail -1)"
+      # ⚠️ NE a `tail -1` legyen az indok. A fork-agent hibauzenete tobbsoros lehet
+      # (pl. a bizalmi parbeszed kepernyo-reszletevel), es akkor az utolso sor egy
+      # haszontalan toredek ("Enter to confirm · Esc to cancel") — a Desktop ebbol
+      # nem tudja meg, mi a baj. Az OKOT a `fork-agent:` elotagu sor hordozza.
+      local _err
+      _err=$(print -r -- "$out" | grep -m1 -E '^(fork-agent|spawner|agent-close-tree):') \
+        || _err=$(print -r -- "$out" | tail -1)
+      set_status "$id" failed "$_err"
   fi
   return $rc
 }

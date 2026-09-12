@@ -363,6 +363,10 @@ if ! "$TMUX_BIN" new-session -d -s "agent-$NAME" "$shell_cmd"; then
   die "tmux new-session sikertelen"
 fi
 
+# ⚠️ A pane elje tul a parancs kilepeset, kulonben a HALAL OKA elvesz: a tmux
+# alapbol megszunteti a sessiont, es vele az utolso kepernyot is. 2026-09-12-en
+# emiatt nem lehetett megmondani, miert halt meg ket fork.
+"$TMUX_BIN" set-option -t "agent-$NAME" remain-on-exit on 2>/dev/null
 sleep 5
 if ! "$TMUX_BIN" has-session -t "agent-$NAME" 2>/dev/null; then
   rm -f "$SPEC"
@@ -372,15 +376,47 @@ fi
 
 # A felügyelet nélküli induláskor beragadó egyszeri modálok. Forknál a teljes
 # átvétel az alapértelmezés — azért forkolsz, hogy a gyerek tudja, amit a szülő.
+# ⚠️ A visszateresi kodot MEG KELL NEZNI. 2026-09-12: a modal-kezelo vakon Entert
+# nyomott a bizalmi parbeszedre, aminek az alapertelmezese `No, exit` — ezzel
+# MI oltuk meg a forkot, a naplo meg "nem allt fel idoben"-t irt.
 CLAUDE_AGENT_RESUME_MODE="$RESUME_MODE" auto_dismiss_modals "agent-$NAME"
+_modal_rc=$?
+if (( _modal_rc == 3 )); then
+  _lastpane=$("$TMUX_BIN" capture-pane -p -t "agent-$NAME" 2>/dev/null | grep -v '^$' | tail -6)
+  "$TMUX_BIN" kill-session -t "agent-$NAME" 2>/dev/null
+  rm -f "$SPEC"
+  $WANT_WT && remove_worktree "$CWD" "$RUN_CWD" "worktree-$NAME"
+  log "TRUST-REQUIRED $NAME cwd=$RUN_CWD"
+  die "a munkakönyvtár nincs megbízhatóként jelölve: $RUN_CWD
+A Claude Code ilyenkor rákérdez, és ezt a döntést NEM hozhatja meg helyetted egy agent.
+Nyisd meg egyszer kézzel ebben a könyvtárban (\`cd ${RUN_CWD} && claude\`), válaszold meg
+a kérdést, utána a fork már el tud indulni.
+A képernyő utolsó sorai:
+${_lastpane}"
+fi
+if (( _modal_rc == 4 )); then
+  _lastpane=$("$TMUX_BIN" capture-pane -p -t "agent-$NAME" 2>/dev/null | grep -v '^$' | tail -8)
+  "$TMUX_BIN" kill-session -t "agent-$NAME" 2>/dev/null
+  rm -f "$SPEC"
+  $WANT_WT && remove_worktree "$CWD" "$RUN_CWD" "worktree-$NAME"
+  log "UNKNOWN-MODAL $NAME cwd=$RUN_CWD"
+  die "ismeretlen párbeszéd állta el az indulást — nem tippelünk rá választ.
+A képernyő utolsó sorai:
+${_lastpane}"
+fi
 
 # A feladat bekuldese, ugyanugy, mint a folytatasnal. Az auto_dismiss_modals csak
 # akkor ter vissza, ha a session mar a beviteli sorat mutatja — de egy nagy
 # beszelgetes betoltese percekig tart, ezert itt meg egyszer kivarjuk.
 if [[ -n "$PROMPT" ]]; then
-  _ready=0
+  # ⚠️ KET KULONBOZO BUKAS, eddig EGY uzenettel. A `capture-pane` akkor is elbukik,
+  # ha a session MEGSZUNT (a claude kilepett) — a regi `|| break` ilyenkor is
+  # "nem allt fel idoben"-t iratott ki. 2026-09-12-en ez rejtette el, hogy a
+  # modal-kezelo leptette ki a forkot: a hiba nem lassusag volt, hanem HALAL.
+  _ready=0; _died=0
   for _i in {1..40}; do
-    _pane=$("$TMUX_BIN" capture-pane -p -t "agent-$NAME" 2>/dev/null) || break
+    if ! "$TMUX_BIN" has-session -t "agent-$NAME" 2>/dev/null; then _died=1; break; fi
+    _pane=$("$TMUX_BIN" capture-pane -p -t "agent-$NAME" 2>/dev/null) || { _died=1; break }
     [[ "$_pane" == *"⏵⏵"* || "$_pane" == *"❯"* ]] && { _ready=1; break }
     sleep 3
   done
@@ -403,6 +439,18 @@ if [[ -n "$PROMPT" ]]; then
         log "PROMPT-LOST $NAME (${#PROMPT} karakter) — a feladat NEM ment el, kezi bekuldes kell"
         print -u2 "figyelem: $NAME megkapta a sessiont, de a FELADAT NEM ment el (kétszer sem)"
       fi
+  elif (( _died )); then
+    # A session megszunt: a claude kilepett. A `remain-on-exit` miatt a pane
+    # utolso kepe megvan — ez az EGYETLEN nyom arra, hogy MIERT.
+    _lastpane=$("$TMUX_BIN" capture-pane -p -t "agent-$NAME" 2>/dev/null | grep -v '^$' | tail -8)
+    "$TMUX_BIN" kill-session -t "agent-$NAME" 2>/dev/null
+    rm -f "$SPEC"
+    $WANT_WT && remove_worktree "$CWD" "$RUN_CWD" "worktree-$NAME"
+    log "DIED $NAME cwd=$RUN_CWD — a session megszunt indulas kozben"
+    die "a fork elindult, de a session MEGSZŰNT, mielőtt készen állt volna.
+cwd: $RUN_CWD
+A képernyő utolsó sorai:
+${_lastpane:-(nem volt menthető)}"
   else
     log "WARN $NAME nem allt fel idoben — a feladat NEM ment el"
     print -u2 "figyelem: $NAME nem állt fel időben, a feladatot kézzel kell beküldeni"
