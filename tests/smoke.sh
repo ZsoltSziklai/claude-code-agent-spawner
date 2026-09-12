@@ -309,6 +309,30 @@ yes_ "Telegram-hiba esetén is feldolgozza" \
 yes_ "a gombos üzenet szövege lemezre kerül" \
      grep -q 'print -r -- "$btn" > "$REQ_DIR/$id.button.txt"' "$ROOT/bin/bridge-relay.sh"
 
+print "\n\033[1mjelentés-publikálás közös munkakönyvtárnál\033[0m"
+# ⚠️ 2026-09-12, ELES HIBA. Ket agent OSZTOZHAT egy cwd-n (a `~/ClaudeProjects` a
+# gyoker es minden cwd nelkuli fork kozos cwd-je). A publikalo minden agent
+# koreben vegigglobozza a cwd-t, igy az EGYIK felszedi a MASIK jelenteset. A
+# fajlnev hordozza a keres-id-t, ezert a publikalas helyes volt — de az
+# `answered` konyveles a ROSSZ agentre ment: a valodi szerzo jeloletlen maradt,
+# a masik meg olyan id-t kapott, ami sosem egyezik a sajat keresevel. Igy
+# MINDKETTO "lezaratlan", es a beragadas-figyelo hamisan tuzelhet rajuk.
+PT="$TMP/pub"; rm -rf "$PT"; mkdir -p "$PT/cwd" "$PT/res"
+jq -n '{"agent-A":{request:"kerA"},"agent-B":{request:"kerB"}}' > "$PT/spawned.json"
+print "B jelentese" > "$PT/cwd/.bridge-result-kerB.md"
+touch -t 202601010000 "$PT/cwd/.bridge-result-kerB.md"
+( zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"
+  BRIDGE_SPAWNED="'"$PT"'/spawned.json"; RES_DIR="'"$PT"'/res"
+  find_spec() { print ""; }; agent_runtime_cwd() { print "'"$PT"'/cwd"; }
+  CLAUDE_AGENT_ROOT="'"$PT"'/cwd"; ROOT_AGENT_NAME="agent-A"
+  bridge_publish_results' ) >/dev/null 2>&1
+is   "a jelentés a helyes kérés-id alá kerül" \
+     "$(ls "$PT/res" 2>/dev/null)" "kerB.md"
+is   "a SZERZŐ kapja a lezárás-jelölést" \
+     "$(jq -r '.["agent-B"].answered // "—"' "$PT/spawned.json")" "kerB"
+is   "a másik agent jelölése érintetlen marad" \
+     "$(jq -r '.["agent-A"].answered // "—"' "$PT/spawned.json")" "—"
+
 print "\n\033[1mbizalmi párbeszéd: nem mi döntünk helyette\033[0m"
 # ⚠️ 2026-09-12, ELES HIBA. A modal-kezelo generikus aga BARMILYEN "Enter to
 # confirm" feliratu ablakra vakon Entert nyomott. A Claude Code bizalmi
@@ -1048,7 +1072,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=234}
+: ${SMOKE_EXPECTED:=237}
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1

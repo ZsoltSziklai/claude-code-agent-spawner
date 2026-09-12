@@ -18,6 +18,14 @@ követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.
   ág, és a halál okát a képernyő utolsó képe mutatja.
 - **A halál oka eddig elveszett**: a tmux a parancs kilépésekor megszüntette a
   sessiont. A pane mostantól `remain-on-exit`-tel túléli.
+- **A jelentés a szerzőjéhez kerül könyvelésre.** Két agent osztozhat egy
+  munkakönyvtáron (a projektgyökér a gyökér-agent és minden `cwd` nélküli fork
+  közös cwd-je), és a publikáló az egyik körében szedte fel a másik jelentését.
+  A fájlnév hordozza a kérés-azonosítót, ezért a publikálás helyes volt — de a
+  lezárás-jelölés a rossz agentre került, és így **mindkettő lezáratlan maradt**:
+  a beragadás-figyelő hamisan tüzelhetett rájuk. A szerzőt mostantól a
+  kérés-azonosítóból oldjuk fel, és a napló megmondja, ha közös cwd miatt máshol
+  találtuk meg.
 - **A bukás `failed` státuszt kap**, nem `spawned`-et — a Desktop a `spawned`-et
   sikernek olvassa. Az indok a beszédes hibasor, nem az utolsó képernyő-töredék.
 
@@ -66,7 +74,7 @@ jóváhagyással.
 
 ### Tesztelés
 
-- 234 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
+- 237 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
 - Végigjátszható regressziós forgatókönyv (`tests/REGRESSION-RUN.md`), amely a
   hidat, a jóváhagyást, a valódi munkát és a lezárást élesben méri.
 

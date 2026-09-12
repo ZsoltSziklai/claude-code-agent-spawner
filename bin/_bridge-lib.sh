@@ -878,14 +878,30 @@ bridge_publish_results() {
       mv -f "$f" "$claim" 2>/dev/null || { blog "WARN nem sikerült átvenni: $f"; continue }
       dst="$RES_DIR/$fid.md"
       if mv -f "$claim" "$dst"; then
-        blog "RESULT-PUBLISHED $fid <- $name"
+        # ⚠️ A JELENTES SZERZOJE NEM feltetlenul az az agent, akinek a koreben
+        # ratalaltunk. Ket agent OSZTOZHAT egy munkakonyvtaron (a `~/ClaudeProjects`
+        # a gyoker es minden cwd nelkuli fork kozos cwd-je), es a glob barmelyikuk
+        # korebol felszedi a masik jelenteset. Merve 2026-09-12: a
+        # `vault-lna-commit4` jelenteset a `dsolar-mac` koreben vettuk at.
+        # A FAJL hordozza az id-t, ezert a publikalas helyes volt — de az
+        # `answered` konyveles a ROSSZ agentre ment, es igy MINDKETTO lezaratlan
+        # maradt: a beragadas-figyelo hamisan tuzelhet rajuk.
+        local author
+        author=$(jq -r --arg r "$fid" 'to_entries[] | select(.value.request == $r) | .key' \
+                  "$BRIDGE_SPAWNED" 2>/dev/null | head -1)
+        [[ -n "$author" ]] || author="$name"   # regi, fix nevu fajl: marad a kori agent
+        if [[ "$author" != "$name" ]]; then
+          blog "RESULT-PUBLISHED $fid <- $author (a $name körében találtuk — közös cwd)"
+        else
+          blog "RESULT-PUBLISHED $fid <- $author"
+        fi
         # A LEZARULT kort ALLAPOTBAN rogzitjuk, nem a fajl letezesebol
         # kovetkeztetjuk. A beragadas-figyelo eddig azt nezte, van-e
         # `results/<id>.md` — ha azt barki archivalta vagy kitakaritotta, egy
         # REGEN befejezett kor ujra "beragadtnak" latszott. 2026-08-30: a
         # mac-main-re jott ilyen hamis riasztas egy 4 oraval korabban lezarult
         # korre, mert a teszt-fajlokat kitakaritottuk.
-        state_edit "$BRIDGE_SPAWNED" --arg k "$name" --arg r "$fid" \
+        state_edit "$BRIDGE_SPAWNED" --arg k "$author" --arg r "$fid" \
           '.[$k].answered = $r'
       else
         rm -f "$claim"; blog "WARN eredmény-publikálás sikertelen: $fid"
