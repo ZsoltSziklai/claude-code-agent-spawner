@@ -98,7 +98,7 @@ for s in "$REQ_DIR"/*.status; do
     emsg="⌛️ <b>Lejárt</b> — <code>$id</code>"$'\n'"${MAXH} órán belül nem érkezett jóváhagyás, a kérés archiválva."
     mid=$(bridge_msg_id "$id")
     if [[ -n "$mid" ]]; then
-      tg_edit_message "$mid" "$emsg A gombok lekerültek." >/dev/null 2>&1
+      tg_edit_message "$mid" "$emsg $(t m.btnsremoved)" >/dev/null 2>&1
     else
       # Nincs eltett message_id -> nem volt gombos uzenet. Ez NEM elmeleti
       # eset: audit modban es felhatalmazas mellett nem kuldunk gombsort, es
@@ -236,7 +236,7 @@ while read -r u; do
   # Enélkül bárki, aki megtalálja a botot, agentet indíthatna a gépen.
   if [[ "$from" != "$ALLOWED_USER" ]]; then
     blog "DENY idegen from.id=$from data=$data"
-    tg_answer_callback "$cbid" "Nem engedélyezett." >/dev/null 2>&1
+    tg_answer_callback "$cbid" "$(t cb.denied)" >/dev/null 2>&1
     continue
   fi
 
@@ -252,26 +252,26 @@ while read -r u; do
   if [[ "$action" == "s8" || "$action" == "sd" || "$action" == "sw" ]]; then
     # Tabla-vezerelt: egy uj idoablak EGY sor, nem egy uj if-ag.
     case "$action" in
-      s8) msec=28800;  mlab="8 óra" ;;
-      sd) msec=86400;  mlab="1 nap" ;;
-      sw) msec=604800; mlab="1 hét" ;;
+      s8) msec=28800;  mlab="$(t dur.8h)" ;;
+      sd) msec=86400;  mlab="$(t dur.1d)" ;;
+      sw) msec=604800; mlab="$(t dur.1w)" ;;
     esac
     mag=$(jq -r --arg r "$id" 'to_entries[] | select(.value.request == $r) | .key' \
             "$BRIDGE_SPAWNED" 2>/dev/null | head -1)
     if [[ -z "$mag" ]]; then
-      tg_answer_callback "$cbid" "Nem találom, melyik agentről van szó." >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.notfound)" >/dev/null 2>&1
       blog "STALL-MUTE-NOOP (keres: $id)"
       continue
     fi
     if muntil=$(bridge_stall_mute_set "$mag" "$msec"); then
-      tg_answer_callback "$cbid" "Rendben, $mlab-ig nem szólok róla." >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.mutedfor "$mlab")" >/dev/null 2>&1
       # A szoveget MEGHAGYJUK (dokumentalja a beragadast), csak a gombokat
       # vesszuk le, es kulon uzenetben nyugtazunk.
       tg_clear_markup "$cqmid" >/dev/null 2>&1
-      tg_send_message "🔕 <b>Rendben</b> — <code>$mag</code>"$'\n'"Erről az agentről <b>$mlab</b>-ig nem küldök beragadás-értesítést (eddig: <b>$(bridge_grant_human "$muntil")</b>)." >/dev/null 2>&1
+      tg_send_message "$(t m.mutedfull "$mag")"$'\n'"$(t m.mutednote "$mlab") (<b>$(bridge_grant_human "$muntil")</b>)" >/dev/null 2>&1
       blog "STALL-MUTED $mag ($mlab, lejar: $(bridge_grant_human "$muntil"), keres: $id)"
     else
-      tg_answer_callback "$cbid" "Nem sikerült." >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.notdone)" >/dev/null 2>&1
       blog "STALL-MUTE-FAILED $mag (keres: $id)"
     fi
     continue
@@ -283,13 +283,13 @@ while read -r u; do
     nag=$(jq -r --arg r "$id" 'to_entries[] | select(.value.request == $r) | .key' \
             "$BRIDGE_SPAWNED" 2>/dev/null | head -1)
     if [[ -n "$nag" ]] && bridge_nudge_agent "$nag" "$id"; then
-      tg_answer_callback "$cbid" "Szóltam neki." >/dev/null 2>&1
-      tg_edit_message "$cqmid" "🔔 <b>Emlékeztető elküldve</b> — <code>$nag</code>"$'\n'"Ha döntésre várt, most a jelentésébe fogja írni." \
-        || tg_send_message "🔔 Emlékeztető elküldve — <code>$nag</code>" >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.nudged)" >/dev/null 2>&1
+      tg_edit_message "$cqmid" "$(t m.nudgeshort "$nag")"$'\n'"$(t m.nudgenote)" \
+        || tg_send_message "$(t m.nudgeshort "$nag")" >/dev/null 2>&1
       blog "NUDGED $nag (keres: $id)"
     else
-      tg_answer_callback "$cbid" "Nem sikerült (nem fut?)." >/dev/null 2>&1
-      tg_edit_message "$cqmid" "⚠️ Az emlékeztetőt nem sikerült elküldeni — az agent már nem fut." >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.notrunning)" >/dev/null 2>&1
+      tg_edit_message "$cqmid" "$(t m.nudgefail)" >/dev/null 2>&1
       blog "NUDGE-FAILED (keres: $id)"
     fi
     continue
@@ -297,16 +297,16 @@ while read -r u; do
 
   if [[ "$action" == "rv" ]]; then
     if ag=$(bridge_grant_revoke_by_req "$id"); then
-      tg_answer_callback "$cbid" "Visszavonva." >/dev/null 2>&1
-      tg_edit_message "$cqmid" "🚫 <b>Felhatalmazás visszavonva</b> — <code>$ag</code>"$'\n'"A további folytatások ismét jóváhagyást kérnek." \
-        || tg_send_message "🚫 Felhatalmazás visszavonva — <code>$ag</code>" >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.revoked)" >/dev/null 2>&1
+      tg_edit_message "$cqmid" "$(t m.revokedfull "$ag")"$'\n'"$(t m.revokednote2)" \
+        || tg_send_message "$(t m.revokedfull "$ag")" >/dev/null 2>&1
       blog "GRANT-REVOKED $ag (keres: $id)"
     else
       # ⚠️ NEM irjuk at az uzenetet: az gyakran egy SIKERES auto-inditast
       # dokumental, es egy dupla gombnyomas masodik korebol jovo no-op valasz
       # torolne a nyomat (2026-08-30: igy "tunt el" a B4 lepes). Csak a gombot
       # vesszuk le; a buborek elmondja, mi tortent.
-      tg_answer_callback "$cbid" "Ez a felhatalmazás már nem él (lejárt vagy visszavonva)." >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.grantgone)" >/dev/null 2>&1
       tg_clear_markup "$cqmid" >/dev/null 2>&1
       blog "GRANT-REVOKE-NOOP (keres: $id)"
     fi
@@ -319,7 +319,7 @@ while read -r u; do
   if [[ "$action" == "qa" || "$action" == "qn" ]]; then
     gspec="${CLAUDE_AGENT_QUEUE}/gated/$id.json"
     if [[ ! -f "$gspec" ]]; then
-      tg_answer_callback "$cbid" "Ez a kérés már nem függőben." >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.stale)" >/dev/null 2>&1
       tg_clear_markup "$cqmid" >/dev/null 2>&1
       blog "STALE-PRESS $id (queue-kapu: a spec nincs a gated/ alatt)"
       continue
@@ -329,9 +329,9 @@ while read -r u; do
       mv -f "$gspec" "${CLAUDE_AGENT_QUEUE}/failed/$id.json" 2>/dev/null
       print "elutasítva Telegramban (agent-indította kérés)" \
         > "${CLAUDE_AGENT_QUEUE}/failed/$id.reason" 2>/dev/null
-      tg_answer_callback "$cbid" "Elutasítva." >/dev/null 2>&1
-      tg_edit_message "$cqmid" "✖️ <b>Elutasítva</b> — <code>$gname</code>" \
-        || tg_send_message "✖️ Elutasítva — <code>$gname</code>" >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.rejected)" >/dev/null 2>&1
+      tg_edit_message "$cqmid" "$(t m.qrejected "$gname")" \
+        || tg_send_message "$(t m.qrejected "$gname")" >/dev/null 2>&1
       blog "QUEUE-REJECTED $id name=$gname"
       continue
     fi
@@ -339,13 +339,13 @@ while read -r u; do
     # WatchPaths-triggerelt spawner mar kapu nelkul futtatja.
     if jq '.approved = true' "$gspec" > "$gspec.tmp" 2>/dev/null; then
       mv "$gspec.tmp" "${CLAUDE_AGENT_QUEUE}/new/$id.json" && rm -f "$gspec"
-      tg_answer_callback "$cbid" "Indítom." >/dev/null 2>&1
-      tg_edit_message "$cqmid" "▶️ <b>Jóváhagyva, indul</b> — <code>$gname</code>" \
-        || tg_send_message "▶️ Jóváhagyva, indul — <code>$gname</code>" >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.starting)" >/dev/null 2>&1
+      tg_edit_message "$cqmid" "$(t m.qapproved "$gname")" \
+        || tg_send_message "$(t m.qapproved "$gname")" >/dev/null 2>&1
       blog "QUEUE-APPROVED $id name=$gname"
     else
       rm -f "$gspec.tmp"
-      tg_answer_callback "$cbid" "Nem sikerült." >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.notdone)" >/dev/null 2>&1
       blog "QUEUE-APPROVE-FAILED $id name=$gname"
     fi
     continue
@@ -353,14 +353,14 @@ while read -r u; do
 
   st=$(req_status "$id")
   if [[ "$st" != "pending" ]]; then
-    tg_answer_callback "$cbid" "Már nem függőben: $st" >/dev/null 2>&1
+    tg_answer_callback "$cbid" "$(t cb.notpending "$st")" >/dev/null 2>&1
     # A buborek konnyen elsiklik felette — ezert a chatben is kimondjuk, es a
     # gombokat levesszuk, hogy ne lehessen ujra rajuk nyomni.
     # A szoveget MEGHAGYJUK: a jovahagyo uzenet dokumentalja, MIT hagytal jova
     # (pl. az emelt jogosultsag figyelmeztetéset). Csak a gombokat vesszuk le —
     # egy elavult gombnyomas nem torolhet el egy dokumentalo uzenetet.
     tg_clear_markup "$cqmid" >/dev/null 2>&1
-    tg_send_message "⌛️ <code>$id</code> már nem függőben (<b>$st</b>) — a gombnyomás nem csinált semmit." >/dev/null 2>&1
+    tg_send_message "$(t m.stalefull "$id" "$st")" >/dev/null 2>&1
     blog "STALE-PRESS $id (allapot=$st, data=$data)"
     continue
   fi
@@ -369,12 +369,12 @@ while read -r u; do
     no)
       set_status "$id" rejected "elutasítva Telegramban"
       mv -f "$REQ_DIR/$id.json" "$ARCHIVE_DIR/" 2>/dev/null
-      tg_answer_callback "$cbid" "Elutasítva." >/dev/null 2>&1
+      tg_answer_callback "$cbid" "$(t cb.rejected)" >/dev/null 2>&1
       # Helyben atirjuk a kereset: latszik a tenye, es a gombok lekerulnek.
       # Ha az atiras nem megy (regi uzenet, torolt uzenet), kulon uzenetet
       # kuldunk — az elutasitas tenye NEM maradhat el.
-      tg_edit_message "$cqmid" "✖️ <b>Elutasítva</b> — <code>$id</code>" \
-        || tg_send_message "✖️ Elutasítva — <code>$id</code>" >/dev/null 2>&1
+      tg_edit_message "$cqmid" "$(t m.qrejected "$id")" \
+        || tg_send_message "$(t m.qrejected "$id")" >/dev/null 2>&1
       bridge_forget_msg "$id"
       blog "REJECTED $id"
       ;;
@@ -382,14 +382,14 @@ while read -r u; do
       # Az idoablakos gombok ugyanazt inditjak, mint az `ok` — csak a vegen
       # felhatalmazast is adnak. A `close` sosem kap ilyen gombot (relay).
       case "$action" in
-        g1) gsec=3600   ; glab="1 óra" ;;
-        g8) gsec=28800  ; glab="8 óra" ;;
-        gd) gsec=86400  ; glab="1 nap" ;;
+        g1) gsec=3600   ; glab="$(t dur.1h)" ;;
+        g8) gsec=28800  ; glab="$(t dur.8h)" ;;
+        gd) gsec=86400  ; glab="$(t dur.1d)" ;;
         *)  gsec=0      ; glab="" ;;
       esac
       req=$(validate_request "$REQ_DIR/$id.json" 2>/dev/null) || {
         set_status "$id" failed "a kérés időközben érvénytelenné vált"
-        tg_answer_callback "$cbid" "Érvénytelen kérés." >/dev/null 2>&1
+        tg_answer_callback "$cbid" "$(t cb.invalid)" >/dev/null 2>&1
         continue
       }
       # EZ az egyetlen ag, ahol a felhasznalo erre a KONKRET keresre gombot
@@ -409,23 +409,23 @@ while read -r u; do
             gag="$BRIDGE_LAST_NAME"
           fi
           if [[ -n "$gag" ]] && guntil=$(bridge_grant_set "$gag" "$gsec" "$id"); then
-            gnote=$'\n'"⏱ Felhatalmazás <b>$glab</b>-ra: <code>$gag</code> folytatásai eddig jóváhagyás nélkül indulnak: <b>$(bridge_grant_human "$guntil")</b>"
+            gnote=$'\n'"$(t m.grantline "$glab" "$gag" "$(bridge_grant_human "$guntil")")"
             blog "GRANT-SET $gag ($glab, lejar: $(bridge_grant_human "$guntil"), keres: $id)"
           else
-            gnote=$'\n'"⚠️ A felhatalmazást nem sikerült beállítani (nincs cél-agent)."
+            gnote=$'\n'"$(t m.grantfail)"
             blog "GRANT-FAILED $id"
           fi
         fi
-        tg_answer_callback "$cbid" "Elindítva.${glab:+ (+$glab)}" >/dev/null 2>&1
-        tg_edit_message "$cqmid" "▶️ <b>Elindítva</b> — <code>$id</code>${glab:+  ·  ⏱ +$glab}" >/dev/null 2>&1
+        tg_answer_callback "$cbid" "$(t cb.started)${glab:+ (+$glab)}" >/dev/null 2>&1
+        tg_edit_message "$cqmid" "$(t m.startedshort "$id")${glab:+  ·  ⏱ +$glab}" >/dev/null 2>&1
         bridge_forget_msg "$id"
-        tg_send_message "▶️ Elindult — <code>$id</code>"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | head -5)</pre>"$'\n'"Csatlakozás: <code>$(attach_hint "$BRIDGE_LAST_NAME")</code>$gnote" >/dev/null 2>&1
+        tg_send_message "$(t m.startedfull "$id")"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | head -5)</pre>"$'\n'"$(t m.attachline) <code>$(attach_hint "$BRIDGE_LAST_NAME")</code>$gnote" >/dev/null 2>&1
         blog "SPAWNED $id"
       else
-        tg_answer_callback "$cbid" "Indítás sikertelen." >/dev/null 2>&1
-        tg_edit_message "$cqmid" "⚠️ <b>Indítás sikertelen</b> — <code>$id</code>" >/dev/null 2>&1
+        tg_answer_callback "$cbid" "$(t cb.failed)" >/dev/null 2>&1
+        tg_edit_message "$cqmid" "$(t m.failedshort "$id")" >/dev/null 2>&1
         bridge_forget_msg "$id"
-        tg_send_message "⚠️ Indítás sikertelen — <code>$id</code>"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | tail -3)</pre>" >/dev/null 2>&1
+        tg_send_message "$(t m.failedfull "$id")"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | tail -3)</pre>" >/dev/null 2>&1
         blog "FAILED $id"
       fi
       ;;

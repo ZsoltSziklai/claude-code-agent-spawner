@@ -19,6 +19,9 @@
   "about": {},
   "_about": "Rövid leírás szülőnként, pl. {\"mac-main\": \"a command center\"}. A híd ezt teszi az agents.json-be, és a Desktop ebből választ szülőt — enélkül vakon tippel. A kulcsok a `parents` listából valók.",
 
+  "lang": "hu",
+  "_lang": "A Telegram-üzenetek és gombfeliratok nyelve: \"hu\" vagy \"en\". Alapértelmezés: hu. / Language of Telegram messages and button labels: \"hu\" or \"en\". Default: hu.",
+
   "stall_minutes": 15,
   "_stall_minutes": "Ennyi perc tétlenség után szólunk, ha egy híd-agentnek MÉG NINCS jelentése. Tipikusan azt jelenti, hogy kérdéssel fejezte be a kört — arra viszont a saját sessionjében nincs kitől választ kapnia."
 }

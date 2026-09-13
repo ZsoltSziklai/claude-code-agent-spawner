@@ -180,6 +180,10 @@ numeric id, list the agents that may be forked from in `parents`, and describe e
 one in `about` — the Desktop side picks a parent from those descriptions, so a
 missing `about` means it is guessing.
 
+`lang` picks the language of everything Telegram sends you — button labels,
+messages, the lot: `"hu"` or `"en"`. The default is `hu`, so an existing
+installation does not switch language on you when you upgrade.
+
 Then restart the two bridge jobs so they pick up the config:
 
 ```bash
@@ -370,7 +374,7 @@ If you want the queue itself gated, that gate does not exist yet.
 | `new-agent.md` / `close-agent.md` / `kill-agent.md` / `kill-all-exit.md` | Slash command definitions. |
 | `tests/REGRESSION-RUN.md` | The runnable version: paste the opening prompt into a Cowork session, press the Telegram buttons per the map. The Desktop drives its own blocks and spawns a CLI agent over the bridge for the CLI ones — that agent reads its steps from this same file. |
 | `tests/REGRESSION.md` | The end-to-end run-through: the Telegram gate, a real spawn, the work, the report coming back, the close. What `smoke.sh` cannot reach. On 2026-08-29 seven real bugs surfaced this way and **none** by reading the code — `spawned` does not mean the work happened. |
-| `tests/smoke.sh` | `zsh tests/smoke.sh` — 223 assertions over the parts that can be isolated: standing approvals, the state file, the status machine, the three model whitelists agreeing, the prompt byte limit, the restart-counter gating, the tmux session-name resolution, and `zsh -n` on every script. Runs in a throwaway directory and never touches `~/.claude`. What it deliberately does not cover: spawning, merging and killing need a real tmux session, a real git repo and launchd — those are exercised on disposable agents. |
+| `tests/smoke.sh` | `zsh tests/smoke.sh` — 251 assertions over the parts that can be isolated: standing approvals, the state file, the status machine, the three model whitelists agreeing, the prompt byte limit, the restart-counter gating, the tmux session-name resolution, and `zsh -n` on every script. Runs in a throwaway directory and never touches `~/.claude`. What it deliberately does not cover: spawning, merging and killing need a real tmux session, a real git repo and launchd — those are exercised on disposable agents. |
 | `bin/agent-kill-one.sh` / `agent-kill-all.sh` / `agent-kill-tree.sh` / `agent-close-tree.sh` | Helpers called by the slash commands. |
 | `bin/_agent-lib.sh` | Shared helpers: live registry, worktree/transcript resolution, modal auto-dismiss. |
 | `bin/mac-main-watchdog.sh` | Keeps the command-center session alive; drives the child sweep. |
@@ -569,6 +573,10 @@ numerikus azonosítód; a `parents` azokat az agenteket sorolja, amikből forkol
 szabad; az `about` pedig leírja mindegyiket — a Desktop ezekből a leírásokból
 választ szülőt, tehát hiányzó `about` mellett vakon tippel.
 
+A `lang` azt választja meg, milyen nyelven szól hozzád a Telegram — a
+gombfeliratokat és az üzeneteket is: `"hu"` vagy `"en"`. Az alapértelmezés a
+`hu`, tehát egy meglévő telepítés nem vált nyelvet magától a frissítéstől.
+
 Utána indítsd újra a két híd-jobot, hogy felvegyék a configot:
 
 ```bash
@@ -756,7 +764,7 @@ Ha magát a queue-t is kapu mögé tennéd, az a kapu még nem létezik.
 | `new-agent.md` / `close-agent.md` / `kill-agent.md` / `kill-all-exit.md` | A slash parancsok definíciói. |
 | `tests/REGRESSION-RUN.md` | A futtatható változat: a kezdő promptot beilleszted egy Cowork sessionbe, a gombokat a térkép szerint nyomod. A Desktop a saját blokkjait futtatja, a CLI-körhöz pedig a **hídon indít egy CLI-agentet**, ami ugyanebből a fájlból olvassa a lépéseit. |
 | `tests/REGRESSION.md` | A végigjátszható forgatókönyv: Telegram-kapu, valódi indítás, a munka, a jelentés visszaútja, lezárás. Amit a `smoke.sh` nem ér el. 2026-08-29-én hét valódi hiba így került elő, és **egy sem** kódolvasással — a `spawned` nem jelenti azt, hogy a munka megtörtént. |
-| `tests/smoke.sh` | `zsh tests/smoke.sh` — 223 állítás az izolálható részekre: állandó jóváhagyások, állapot-fájl, státusz-gép, a három modell-fehérlista egyezése, a prompt bájt-limitje, az újraindítás-számláló nullázása, a tmux session-név feloldása, és `zsh -n` minden szkriptre. Eldobható könyvtárban fut, a `~/.claude`-hoz hozzá sem nyúl. Amit szándékosan nem fed le: az indítás, a merge és a kilövés valódi tmux-sessiont, git-repót és launchd-t igényel — azokat eldobható agenteken teszteljük. |
+| `tests/smoke.sh` | `zsh tests/smoke.sh` — 251 állítás az izolálható részekre: állandó jóváhagyások, állapot-fájl, státusz-gép, a három modell-fehérlista egyezése, a prompt bájt-limitje, az újraindítás-számláló nullázása, a tmux session-név feloldása, és `zsh -n` minden szkriptre. Eldobható könyvtárban fut, a `~/.claude`-hoz hozzá sem nyúl. Amit szándékosan nem fed le: az indítás, a merge és a kilövés valódi tmux-sessiont, git-repót és launchd-t igényel — azokat eldobható agenteken teszteljük. |
 | `bin/agent-kill-one.sh` / `agent-kill-all.sh` / `agent-kill-tree.sh` / `agent-close-tree.sh` | A slash parancsok segédszkriptjei. |
 | `bin/_agent-lib.sh` | Közös segédfüggvények: élő nyilvántartás, worktree/átirat-feloldás, modál-automatika. |
 | `bin/mac-main-watchdog.sh` | Életben tartja a command-centert; vezérli a gyerek-sweepet. |
