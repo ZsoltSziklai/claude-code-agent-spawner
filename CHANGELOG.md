@@ -1,11 +1,147 @@
 # Changelog
 
-A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
-követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+**🇭🇺 [Magyar változat](#magyar-változat)**
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
+version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.1.0] — 2026-09-13
+
+### Added
+
+- **The language of Telegram is now configurable.** The `lang` key of
+  `bridge-allow.json` takes `"hu"` or `"en"`; the default stays `hu`, so an
+  existing installation does not switch language silently on upgrade. It covers
+  everything the user sees: button labels, the bubble replies to a button press,
+  the approval and report messages, and the duration labels inside them.
+- **Every document in the repository is bilingual** — English first, a
+  `Magyar változat` section after it. Previously only `README.md` was.
+
+### Changed
+
+- **User-facing text lives in one catalogue.** Telegram strings used to sit at
+  the call sites across three files; they now come from `BRIDGE_MSG` in
+  `bin/_bridge-lib.sh` through `t <key>`. An unknown key renders **as the key**,
+  not as an empty string — a missing translation is visible rather than silent.
+- 251 assertions in the smoke test (was 243).
 
 ## [1.0.1] — 2026-09-13
 
-### Javítva
+### Fixed
+
+- **The modal handler could kill its own agent.** The generic branch pressed
+  Enter on any window labelled "Enter to confirm"; in Claude Code's trust dialog,
+  however, the selected answer is **`No, exit`**, so Enter quit the freshly
+  started fork. We no longer guess on an unknown dialog.
+- **The agent answers the trust question by itself** — but only for a working
+  directory **inside the allowed root**, and the decision rests on the path read
+  out of the dialog, not on a variable passed in. The point of unattended mode is
+  that after approval the agent gets the job done; the gate is the Telegram
+  approval, not a second question about the same thing. For a path outside the
+  root it still stops.
+- **The error message lied.** When the session was gone, the readiness watcher
+  wrote "did not come up in time" even though the process had died. The two are
+  now separate branches, and the last frame of the screen shows the cause of death.
+- **The cause of death used to be lost**: tmux destroyed the session when the
+  command exited. The pane now survives it with `remain-on-exit`.
+- **A duplicate request id is no longer swallowed silently.** A new request
+  arriving on an already-used id was skipped without a word: no agent, no error,
+  no message — the sender waited on a status that would never change. It now gets
+  a `rejected` status and a Telegram message carrying the earlier state. An
+  already-processed request is still skipped quietly (otherwise it would speak up
+  every cycle); the age of the files tells the two apart.
+- **A report is booked to its author.** Two agents can share a working directory
+  (the project root is the common cwd of the root agent and every fork without a
+  `cwd`), and the publisher picked up the other one's report during its own
+  round. The filename carries the request id, so publishing was correct — but the
+  close marker landed on the wrong agent, leaving **both unclosed**: the stall
+  watcher could fire on them falsely. The author is now resolved from the request
+  id, and the log says when a shared cwd made us find it elsewhere.
+- **A failure gets the `failed` status**, not `spawned` — the Desktop reads
+  `spawned` as success. The reason is the expressive error line, not the last
+  fragment of the screen.
+
+## [1.0.0] — 2026-09-04
+
+The first public release. Starting, supervising and cleanly closing background
+Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
+
+### Main capabilities
+
+- **Starting agents from a queue** — a JSON spec written under `new/` starts a
+  Remote Control session in about two seconds; it shows up immediately on the
+  mobile Code tab.
+- **Desktop bridge** — Claude Desktop asks for an agent start, continuation or
+  close through an attached folder. Every request is gated on Telegram approval.
+- **Time-boxed authorization** — an agent can be granted 1 hour / 8 hours / 1 day
+  so continuations do not each need their own button; revocable at any time.
+- **Tree-shaped agents** — children take the parent's name as a prefix, and
+  closing cascades: from the deepest upwards, the work merging into the parent's
+  branch.
+- **Git worktree isolation** — an optional branch and working directory per agent.
+- **Watchdog** — brings back dying agents, including the root session.
+
+### Safety limits
+
+- **Approval gate** — an agent-initiated start (`requested_by`) and a fork do not
+  run without a Telegram button press.
+- **Fork limits** — a self-replication guard, a depth limit and a rate limit
+  against runaway forking; a truncated-name collision is an error, not a warning.
+- **A fresh session is the default** — a child does not inherit the parent's
+  conversation unless explicitly asked (`--summary` / `--inherit`).
+- **Verified task delivery** — the `spawned` status means the task provably
+  arrived: it is sent in chunks and confirmed back from the agent's transcript.
+  If it does not land, the status is `failed`.
+- **Elevated permission with a warning** — a `bypassPermissions` request gets its
+  own block on the approval message.
+
+### Response time
+
+- A Telegram button press is processed **within seconds**: inside its 30-second
+  cycle the poller listens for 25, so a long poll is practically always open.
+  With the earlier, shorter wait about 15 seconds of dead time were left per
+  cycle, during which the user rightly believed the button had not worked — and
+  pressed again.
+- A stale (no longer pending) button press does nothing, but **says so**, and
+  removes the buttons so they cannot be pressed again.
+
+### Testing
+
+- 243 assertions in the smoke test (`tests/smoke.sh`), in CI on every push.
+- A playable regression scenario (`tests/REGRESSION-RUN.md`) measuring the
+  bridge, the approval, real work and the close live.
+
+---
+
+## Magyar változat
+
+A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
+követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.1.0] — 2026-09-13
+
+#### Hozzáadva
+
+- **A Telegram nyelve beállítható.** A `bridge-allow.json` `lang` kulcsa `"hu"`
+  vagy `"en"`; az alapértelmezés marad a `hu`, tehát egy meglévő telepítés nem
+  vált nyelvet magától a frissítéstől. Mindenre kiterjed, amit a felhasználó lát:
+  a gombfeliratokra, a gombnyomásra jövő buborék-válaszokra, a jóváhagyó és
+  jelentő üzenetekre, és a bennük szereplő időtartam-címkékre.
+- **A repó minden dokumentuma kétnyelvű** — elöl az angol, alatta a
+  `Magyar változat` szakasz. Eddig csak a `README.md` volt az.
+
+#### Változott
+
+- **A felhasználónak szóló szöveg egy katalógusban él.** A Telegram-szövegek
+  eddig három fájlban, a hívás helyén álltak; mostantól a `bin/_bridge-lib.sh`
+  `BRIDGE_MSG` táblájából jönnek a `t <kulcs>` hívással. Ismeretlen kulcsnál
+  **maga a kulcs** jelenik meg, nem üres sztring — egy hiányzó fordítás így
+  látható, nem néma.
+- 251 állítás a füst-tesztben (eddig 243).
+
+### [1.0.1] — 2026-09-13
+
+#### Javítva
 
 - **A modál-kezelő megölhette a saját agentjét.** A generikus ág bármilyen
   „Enter to confirm" feliratú ablakra Entert nyomott; a Claude Code bizalmi
@@ -39,13 +175,13 @@ követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.
 - **A bukás `failed` státuszt kap**, nem `spawned`-et — a Desktop a `spawned`-et
   sikernek olvassa. Az indok a beszédes hibasor, nem az utolsó képernyő-töredék.
 
-## [1.0.0] — 2026-09-04
+### [1.0.0] — 2026-09-04
 
 Az első nyilvános kiadás. Háttérben futó Claude Code agentek indítása,
 felügyelete és rendezett lezárása macOS-en, launchd + tmux felett, Telegram-alapú
 jóváhagyással.
 
-### Fő képességek
+#### Fő képességek
 
 - **Agent-indítás sorból** — a `new/` alá írt JSON specből ~2 másodperc alatt
   indul Remote Control session; a mobil Code tabon azonnal látszik.
@@ -58,7 +194,7 @@ jóváhagyással.
 - **Git-worktree izoláció** — opcionális saját ág és munkakönyvtár agentenként.
 - **Watchdog** — az elhaló agenteket visszahozza, a gyökér sessiont is.
 
-### Biztonsági korlátok
+#### Biztonsági korlátok
 
 - **Jóváhagyási kapu** — agent-kezdeményezte indítás (`requested_by`) és fork
   Telegram-gombnyomás nélkül nem indul.
@@ -72,7 +208,7 @@ jóváhagyással.
 - **Emelt jogosultság figyelmeztetéssel** — a `bypassPermissions` kérés a
   jóváhagyó üzeneten külön blokkot kap.
 
-### Válaszidő
+#### Válaszidő
 
 - A Telegram-gombnyomás **másodperceken belül** feldolgozódik: a poller a 30
   másodperces cikluson belül 25 másodpercig figyel, így gyakorlatilag
@@ -82,7 +218,7 @@ jóváhagyással.
 - Az elavult (már nem függőben lévő) gombnyomás nem csinál semmit, de **szól
   róla**, és leveszi a gombokat, hogy ne lehessen újra rájuk nyomni.
 
-### Tesztelés
+#### Tesztelés
 
 - 243 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
 - Végigjátszható regressziós forgatókönyv (`tests/REGRESSION-RUN.md`), amely a
@@ -90,3 +226,4 @@ jóváhagyással.
 
 [1.0.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.0.0
 [1.0.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.0.1
+[1.1.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.1.0
