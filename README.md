@@ -4,6 +4,9 @@ A queue-based background-agent orchestrator for [Claude Code](https://claude.com
 
 > macOS-only for now (launchd-based). A Linux port (systemd / inotify) would be straightforward — PRs welcome.
 
+Fejlesztési munkafolyamat (verziózás, commit-konvenció, kiadás):
+[CONTRIBUTING.md](CONTRIBUTING.md) · változások: [CHANGELOG.md](CHANGELOG.md)
+
 **🇭🇺 [Magyar változat](#magyar-változat)**
 
 ---
