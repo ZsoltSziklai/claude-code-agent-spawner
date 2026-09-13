@@ -3,7 +3,7 @@
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
 
-## [1.0.1] — 2026-09-12
+## [1.0.1] — 2026-09-13
 
 ### Javítva
 
