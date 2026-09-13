@@ -309,6 +309,35 @@ yes_ "Telegram-hiba esetén is feldolgozza" \
 yes_ "a gombos üzenet szövege lemezre kerül" \
      grep -q 'print -r -- "$btn" > "$REQ_DIR/$id.button.txt"' "$ROOT/bin/bridge-relay.sh"
 
+print "\n\033[1mduplikált kérés-azonosító: szóljon, ne nyelje el\033[0m"
+# ⚠️ A hid eddig SZO NELKUL atugrotta a mar hasznalt id-re erkezo uj kerest: se
+# agent, se hiba, se uzenet — a kuldo egy sosem valtozo statuszra varhatott.
+# 2026-09-01: a minositő menet kulon leletkent jelentette (a runbook emiatt
+# kapott <UTOTAG> helyorzot). 2026-09-13: eles ujrakuldesnel jott elo.
+# A megkulonboztetes az MTIME: ha a .json UJABB a .status-nal, az friss bekuldes.
+# ⚠️ A VALODI relay-t futtatjuk izolalt konyvtarakkal. Az elso valtozatom a
+# logika SAJAT MASOLATAT mérte a tesztfajlban — tautologikus volt: a kod
+# mutacioja nem buktatta el. Amit merni akarunk, azt kell futtatni.
+_dup_run() {                         # $1=json-mtime $2=status-mtime -> statusz
+  local D="$TMP/dup$1$2"; rm -rf "$D"; mkdir -p "$D/requests" "$D/results" "$D/archive" "$D/q"
+  jq -n '{user_id:1,parents:["mac-main"],cwd_root:"/tmp",gate:"approval",max_pending_hours:24}' > "$D/allow.json"
+  jq -n '{parent:"mac-main",task:"x"}'        > "$D/requests/x.json"
+  jq -n '{status:"failed",message:"regi"}'    > "$D/requests/x.status"
+  touch -t "$1" "$D/requests/x.json"; touch -t "$2" "$D/requests/x.status"
+  ( env BRIDGE_DIR="$D" BRIDGE_CONFIG="$D/allow.json" CLAUDE_AGENT_QUEUE="$D/q" \
+        BRIDGE_TOKEN_FILE="$D/nincs" BRIDGE_TOKEN_KC_SERVICE="nincs" BRIDGE_LOG="$D/log" \
+        zsh "$ROOT/bin/bridge-relay.sh" --dry-run ) >/dev/null 2>&1
+  jq -r '.status' "$D/requests/x.status" 2>/dev/null
+}
+is   "újraküldés elhasznált id-re → rejected" \
+     "$(_dup_run 202609130900 202609130800)" "rejected"
+is   "a már feldolgozott kérés viszont érintetlen marad" \
+     "$(_dup_run 202609130800 202609130900)" "failed"
+yes_ "a relay ezt a megkülönböztetést használja" \
+     grep -q 'DUPLICATE-ID' "$ROOT/bin/bridge-relay.sh"
+yes_ "és az indok megmondja a korábbi állapotot" \
+     grep -q 'ez a kérés-azonosító már használatban volt' "$ROOT/bin/bridge-relay.sh"
+
 print "\n\033[1mjelentés-publikálás közös munkakönyvtárnál\033[0m"
 # ⚠️ 2026-09-12, ELES HIBA. Ket agent OSZTOZHAT egy cwd-n (a `~/ClaudeProjects` a
 # gyoker es minden cwd nelkuli fork kozos cwd-je). A publikalo minden agent
@@ -1083,7 +1112,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=239}
+: ${SMOKE_EXPECTED:=243}
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1

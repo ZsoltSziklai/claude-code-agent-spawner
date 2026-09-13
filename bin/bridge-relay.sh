@@ -67,7 +67,27 @@ for f in "$REQ_DIR"/*.json; do
   id="${f:t:r}"
   # A callback_data 64 bájtos kerete miatt az azonosító rövid és szűk.
   [[ "$id" =~ '^[A-Za-z0-9._-]{1,48}$' ]] || { blog "SKIP érvénytelen id: $id"; continue }
-  [[ "$(req_status "$id")" == "new" ]] || continue
+  # ⚠️ A DUPLIKALT KERES-ID EDDIG NEMAN ELNYELODOTT. Ha egy mar hasznalt id-re
+  # erkezett uj `.json`, ez a sor szo nelkul atugrotta: se agent, se hiba, se
+  # uzenet — a kuldo egy sosem valtozo statuszra varhatott. 2026-09-01-en a
+  # minositő menet ezt kulon leletkent jelentette (a runbook emiatt kapott
+  # `<UTOTAG>` helyorzot), 2026-09-13-an pedig eles ujrakuldesnel jott elo.
+  #
+  # A megkulonboztetes: ha a `.json` UJABB, mint a `.status`, akkor ez egy friss
+  # bekuldes egy elhasznalt id-re — azt meg kell mondani. Ha nem ujabb, akkor ez
+  # csak a mar feldolgozott keres, amit minden korben ujra latunk: azt tovabbra
+  # is csendben atugorjuk, kulonben minden tick uzenetet kuldene.
+  _st=$(req_status "$id")
+  if [[ "$_st" != "new" ]]; then
+    _jmt=$(stat -f %m "$f" 2>/dev/null) || continue
+    _smt=$(stat -f %m "$REQ_DIR/$id.status" 2>/dev/null) || continue
+    (( _jmt > _smt )) || continue
+    blog "DUPLICATE-ID $id (korabbi allapot: $_st)"
+    set_status "$id" rejected "ez a kérés-azonosító már használatban volt (korábbi állapota: $_st) — adj új id-t"
+    notify "⛔️ <b>Elutasítva</b> — <code>$id</code>"$'\n'"Ezt az azonosítót már használtad (korábbi állapota: <b>$_st</b>). A híd a duplikált id-t korábban némán eldobta; mostantól szól. Küldd újra más azonosítóval."
+    mv -f "$f" "$ARCHIVE_DIR/$id.dup.$(date -u +%s).json" 2>/dev/null
+    continue
+  fi
 
   blog "REQUEST $id"
   if ! req=$(validate_request "$f" 2>"$REQ_DIR/$id.err"); then

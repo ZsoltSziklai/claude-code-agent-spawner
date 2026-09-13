@@ -22,6 +22,12 @@ követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.
   ág, és a halál okát a képernyő utolsó képe mutatja.
 - **A halál oka eddig elveszett**: a tmux a parancs kilépésekor megszüntette a
   sessiont. A pane mostantól `remain-on-exit`-tel túléli.
+- **A duplikált kérés-azonosító már nem nyelődik el némán.** Egy már használt
+  id-re érkező új kérést a híd szó nélkül átugrott: se agent, se hiba, se
+  üzenet — a küldő egy sosem változó státuszra várt. Mostantól `rejected`
+  státuszt és Telegram-üzenetet kap, benne a korábbi állapottal. A már
+  feldolgozott kérést továbbra is csendben átugorja (különben minden körben
+  üzenne); a kettőt a fájlok kora különbözteti meg.
 - **A jelentés a szerzőjéhez kerül könyvelésre.** Két agent osztozhat egy
   munkakönyvtáron (a projektgyökér a gyökér-agent és minden `cwd` nélküli fork
   közös cwd-je), és a publikáló az egyik körében szedte fel a másik jelentését.
@@ -78,7 +84,7 @@ jóváhagyással.
 
 ### Tesztelés
 
-- 239 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
+- 243 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
 - Végigjátszható regressziós forgatókönyv (`tests/REGRESSION-RUN.md`), amely a
   hidat, a jóváhagyást, a valódi munkát és a lezárást élesben méri.
 
