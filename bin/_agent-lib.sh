@@ -565,16 +565,33 @@ auto_dismiss_modals() {
       sleep 1; tmux send-keys -t "$sess" Enter 2>/dev/null; sleep 3; continue
     elif [[ "$pane" == *"Is this a project you created or one you trust"* \
          || "$pane" == *"Yes, I trust this folder"* ]]; then
-      # ⚠️ EZ A PARBESZED MEGOLTE A SAJAT AGENTJEINKET (2026-09-12). Az alabbi
-      # generikus ag barmire Entert nyomott, amin "Enter to confirm" szerepel —
-      # a bizalmi ablakon viszont a kijelolt valasz a `❯ No, exit`, tehat az
-      # Enter KILEPTETTE a claude-ot. Ket fork halt meg igy ~31 masodperc alatt,
-      # es a naplo "nem allt fel idoben"-t irt: mi oltuk meg, nem lassu volt.
+      # ⚠️ EZ A PARBESZED MEGOLTE A SAJAT AGENTJEINKET (2026-09-12). A generikus
+      # ag barmire Entert nyomott, amin "Enter to confirm" szerepel — a bizalmi
+      # ablakon viszont a kijelolt valasz a `❯ No, exit`, tehat az Enter
+      # KILEPTETTE a claude-ot.
       #
-      # Es NEM is szabad megvalaszolnunk: azt, hogy egy konyvtar megbizhato-e,
-      # a FELHASZNALO donti el. Egy agent, aki magat hatalmazza fel egy uj
-      # munkakonyvtar olvasasara/irasara/futtatasara, pont azt a kaput keruli
-      # meg, ami miatt a parbeszed letezik. Ezert: megallunk es szolunk.
+      # ⚠️ 2026-09-13: eloszor ugy javitottam, hogy MEGALLUNK es visszakerdezunk.
+      # Ez TEVES volt es a rendszer lenyegevel ment szembe: a felugyelet nelkuli
+      # uzemmod pont arrol szol, hogy az agent magatol vegigcsinalja a munkat, es
+      # AZ ENGEDELY a Telegram-jovahagyas. Ha a jovahagyas utan meg egy kerdes
+      # megallitja, akkor a kapu nem ket helyen van, hanem ketszer ugyanott.
+      #
+      # A HATAR viszont marad, csak a helyes helyen: a valasz csak akkor "igen",
+      # ha a parbeszedben szereplo munkakonyvtar az ENGEDELYEZETT GYOKEREN BELUL
+      # van. A pane-bol olvassuk ki, nem egy atadott valtozobol — igy egy varatlan
+      # utvonalra akkor sem irunk ala, ha a hivo tevedne.
+      local _root="${CLAUDE_AGENT_ROOT:A}" _ws
+      _ws=$(print -r -- "$pane" | sed -n 's/.*Accessing workspace:[[:space:]]*//p' | head -1 | tr -d ' \r')
+      [[ -z "$_ws" ]] && _ws=$(print -r -- "$pane" | grep -oE '/Users/[^ ]+' | head -1)
+      if [[ -n "$_root" && -n "$_ws" && ( "$_ws" == "$_root" || "$_ws" == "$_root"/* ) ]]; then
+        # A kijelolt valasz a `No, exit`; a bizalom a KOVETKEZO sor.
+        tmux send-keys -t "$sess" Down 2>/dev/null
+        sleep 0.5
+        tmux send-keys -t "$sess" Enter 2>/dev/null
+        sleep 3
+        continue
+      fi
+      # A gyokeren KIVULI utvonalra nem irunk ala — az mar nem az, amit jovahagytal.
       return 3
     elif [[ "$pane" == *"Enter to confirm"* ]]; then
       # ⚠️ SZUKITVE. Ez az ag korabban BARMILYEN "Enter to confirm" feliratu

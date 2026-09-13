@@ -10,9 +10,13 @@ követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.
 - **A modál-kezelő megölhette a saját agentjét.** A generikus ág bármilyen
   „Enter to confirm" feliratú ablakra Entert nyomott; a Claude Code bizalmi
   párbeszédében viszont a kijelölt válasz a **`No, exit`**, tehát az Enter
-  kiléptette a frissen indult forkot. Mostantól a bizalmi kérdést felismerjük,
-  **nem válaszoljuk meg** — ez a felhasználó döntése —, és érthető hibával
-  állunk meg. Ismeretlen párbeszédre sem tippelünk.
+  kiléptette a frissen indult forkot. Ismeretlen párbeszédre már nem tippelünk.
+- **A bizalmi kérdést az agent magától megválaszolja** — de csak az
+  **engedélyezett gyökéren belüli** munkakönyvtárra, és a döntés a párbeszédből
+  kiolvasott útvonalon múlik, nem egy átadott változón. A felügyelet nélküli
+  üzemmód lényege, hogy a jóváhagyás után az agent végigcsinálja a munkát; a
+  kapu a Telegram-jóváhagyás, nem egy második kérdés ugyanarra. Gyökéren kívüli
+  útvonalra viszont megáll.
 - **A hibaüzenet hazudott.** Ha a session megszűnt, a készenlét-figyelő
   „nem állt fel időben"-t írt, holott a folyamat meghalt. A kettő most külön
   ág, és a halál okát a képernyő utolsó képe mutatja.
@@ -74,7 +78,7 @@ jóváhagyással.
 
 ### Tesztelés
 
-- 237 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
+- 239 állítás a füst-tesztben (`tests/smoke.sh`), CI-ben minden pusholásnál.
 - Végigjátszható regressziós forgatókönyv (`tests/REGRESSION-RUN.md`), amely a
   hidat, a jóváhagyást, a valódi munkát és a lezárást élesben méri.
 

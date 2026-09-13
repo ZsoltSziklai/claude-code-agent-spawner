@@ -344,8 +344,19 @@ yes_ "a bizalmi párbeszédet felismerjük" \
 # ⚠️ `grep -qv X` azt jelenti: "van sor X NELKUL" — nem azt, hogy egyik sem
 # tartalmazza. Az elso valtozat ezert HAMIS ZOLD volt: a mutacio (az Enter
 # visszatevese) atment rajta. Tagadott `grep -q` kell.
-no_  "és NEM nyomunk rá semmit (a hívóra bízzuk)" \
-     eval 'sed -n "/Is this a project you created/,/return 3/p" "$ROOT/bin/_agent-lib.sh" | grep -q send-keys' 
+# ⚠️ 2026-09-13: eloszor ugy javitottam, hogy MEGALLUNK es visszakerdezunk — ez
+# TEVES volt. A felugyelet nelkuli uzemmod arrol szol, hogy az agent magatol
+# vegigcsinalja a munkat, es AZ ENGEDELY a Telegram-jovahagyas. Ha a jovahagyas
+# utan meg egy kerdes megallitja, a kapu nem ket helyen van, hanem ketszer
+# ugyanott. A HATAR marad, csak a helyes helyen: csak a gyokeren BELULI
+# munkakonyvtarra valaszolunk igent, es a pane-bol olvasott utvonalra, nem egy
+# atadott valtozora.
+yes_ "a gyökéren belüli cwd-t magától megbízhatóvá teszi" \
+     eval 'sed -n "/Is this a project you created/,/return 3/p" "$ROOT/bin/_agent-lib.sh" | grep -q "send-keys -t \"\$sess\" Down"'
+yes_ "a döntés a pane-ből olvasott útvonalon múlik" \
+     grep -q "Accessing workspace:" "$ROOT/bin/_agent-lib.sh"
+yes_ "a gyökéren KÍVÜLI útvonalra viszont megáll" \
+     eval 'sed -n "/Is this a project you created/,/return 3/p" "$ROOT/bin/_agent-lib.sh" | grep -q "return 3"'
 yes_ "a generikus Enter csak ISMERT ablakra megy" \
      eval 'sed -n "/Enter to confirm/,/return 4/p" "$ROOT/bin/_agent-lib.sh" | grep -q "fullscreen"' 
 yes_ "ismeretlen modálra nem tippelünk" \
@@ -1072,7 +1083,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=237}
+: ${SMOKE_EXPECTED:=239}
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1
