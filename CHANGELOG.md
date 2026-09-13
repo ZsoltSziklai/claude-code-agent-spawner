@@ -39,7 +39,7 @@ követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.
 - **A bukás `failed` státuszt kap**, nem `spawned`-et — a Desktop a `spawned`-et
   sikernek olvassa. Az indok a beszédes hibasor, nem az utolsó képernyő-töredék.
 
-## [1.0.0] — 2026-09-01
+## [1.0.0] — 2026-09-04
 
 Az első nyilvános kiadás. Háttérben futó Claude Code agentek indítása,
 felügyelete és rendezett lezárása macOS-en, launchd + tmux felett, Telegram-alapú
