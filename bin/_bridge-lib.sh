@@ -64,6 +64,121 @@ blog() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >> "$BRIDGE_LOG" }
 # --- config ---------------------------------------------------------------
 # Hiányzó config = zárt kapu: inkább ne induljon semmi, mint hogy mindent
 # engedjünk.
+# --- nyelv / language -------------------------------------------------------
+# A Telegram-uzenetek nyelve a configbol jon (`"lang": "hu"` vagy `"en"`).
+# ⚠️ Az ALAPERTELMEZES `hu`, mert a rendszer eddig magyarul beszelt — egy nemet
+# valtas meglepetes lenne annak, aki frissit. Uj telepitesnel a
+# `bridge-allow.json.example` mindket erteket megmutatja.
+#
+# A katalogus kulcs -> "hu|en" alakban all. Egyetlen helyen van, hogy egy uj
+# nyelv ne jelentsen 47 call-site atirasat.
+BRIDGE_LANG="${BRIDGE_LANG:-}"
+bridge_lang() {
+  [[ -n "$BRIDGE_LANG" ]] && { print -r -- "$BRIDGE_LANG"; return 0 }
+  local l; l=$(bridge_cfg '.lang' 'hu')
+  [[ "$l" == (hu|en) ]] || l=hu
+  BRIDGE_LANG="$l"
+  print -r -- "$l"
+}
+
+typeset -gA BRIDGE_MSG
+BRIDGE_MSG=(
+  # --- gombfeliratok ---
+  btn.start      '▶️ Indítás|▶️ Start'
+  btn.reject     '✖️ Elutasítás|✖️ Reject'
+  btn.grant1h    '⏱ +1 óra|⏱ +1 hour'
+  btn.grant8h    '⏱ +8 óra|⏱ +8 hours'
+  btn.grant1d    '⏱ +1 nap|⏱ +1 day'
+  btn.revoke     '🚫 Felhatalmazás visszavonása|🚫 Revoke authorisation'
+  btn.nudge      '🔔 Emlékeztetem|🔔 Remind it'
+  btn.mute8h     '🔕 8 óra|🔕 8 hours'
+  btn.mute1d     '🔕 1 nap|🔕 1 day'
+  btn.mute1w     '🔕 1 hét|🔕 1 week'
+  # --- buborek-valaszok (tg_answer_callback) ---
+  cb.started     'Elindítva.|Started.'
+  cb.rejected    'Elutasítva.|Rejected.'
+  cb.failed      'Indítás sikertelen.|Start failed.'
+  cb.stale       'Ez a kérés már nem függőben.|This request is no longer pending.'
+  cb.revoked     'Visszavonva.|Revoked.'
+  cb.notfound    'Nem találom, melyik agentről van szó.|Cannot tell which agent this is.'
+  cb.denied      'Nem engedélyezett.|Not allowed.'
+  # --- uzenetek ---
+  m.approve      'Elindítsam?|Start it?'
+  m.started      '▶️ <b>Elindítva</b>|▶️ <b>Started</b>'
+  m.startedmsg   '▶️ Elindult|▶️ Started'
+  m.attach       'Csatlakozás:|Attach:'
+  m.failed       '⚠️ <b>Indítás sikertelen</b>|⚠️ <b>Start failed</b>'
+  m.rejected     '⛔️ <b>Elutasítva</b>|⛔️ <b>Rejected</b>'
+  m.expired      '⌛️ <b>Lejárt</b>|⌛️ <b>Expired</b>'
+  m.stalepress   'már nem függőben|is no longer pending'
+  m.stalenoop    'a gombnyomás nem csinált semmit — a kérés már elindult.|the button press did nothing — the request has already started.'
+  m.revoked      '🚫 <b>Felhatalmazás visszavonva</b>|🚫 <b>Authorisation revoked</b>'
+  m.revokednote  'A további folytatások ismét jóváhagyást kérnek.|Further continuations will ask for approval again.'
+  m.grantnote    '⏱ Felhatalmazás|⏱ Authorisation for'
+  m.stalled      '⏳ <b>Egy agent tétlenül áll, jelentés nélkül</b>|⏳ <b>An agent is idle with no report</b>'
+  m.mutedok      '🔕 <b>Rendben</b>|🔕 <b>All right</b>'
+  m.dupid        'Ezt az azonosítót már használtad|You have already used this identifier'
+  cb.mutedfor    'Rendben, %s-ig nem szólok róla.|All right, I will stay quiet about it for %s.'
+  cb.notdone     'Nem sikerült.|Did not work.'
+  cb.nudged      'Szóltam neki.|Reminded it.'
+  cb.notrunning  'Nem sikerült (nem fut?).|Did not work (not running?).'
+  cb.grantgone   'Ez a felhatalmazás már nem él (lejárt vagy visszavonva).|That authorisation is no longer active (expired or revoked).'
+  cb.starting    'Indítom.|Starting it.'
+  cb.notpending  'Már nem függőben: %s|No longer pending: %s'
+  cb.invalid     'Érvénytelen kérés.|Invalid request.'
+  # Idotartam-cimkek: a szovegek BELSEJEBE kerulnek, ezert kulon kulcsok.
+  dur.1h         '1 óra|1 hour'
+  dur.8h         '8 óra|8 hours'
+  dur.1d         '1 nap|1 day'
+  dur.1w         '1 hét|1 week'
+  # --- teljes uzenetek (%s = behelyettesites) ---
+  m.startedfull  '▶️ Elindult — <code>%s</code>|▶️ Started — <code>%s</code>'
+  m.failedfull   '⚠️ Indítás sikertelen — <code>%s</code>|⚠️ Start failed — <code>%s</code>'
+  m.rejectedfull '⛔️ <b>Elutasítva</b> — <code>%s</code>|⛔️ <b>Rejected</b> — <code>%s</code>'
+  m.startedshort '▶️ <b>Elindítva</b> — <code>%s</code>|▶️ <b>Started</b> — <code>%s</code>'
+  m.failedshort  '⚠️ <b>Indítás sikertelen</b> — <code>%s</code>|⚠️ <b>Start failed</b> — <code>%s</code>'
+  m.stalefull    '⌛️ <code>%s</code> már nem függőben (<b>%s</b>) — a kérés már elindult, ez a nyomás nem csinált semmit.|⌛️ <code>%s</code> is no longer pending (<b>%s</b>) — the request has already started, this press did nothing.'
+  m.revokedfull  '🚫 <b>Felhatalmazás visszavonva</b> — <code>%s</code>|🚫 <b>Authorisation revoked</b> — <code>%s</code>'
+  m.revokednote2 'A további folytatások ismét jóváhagyást kérnek.|Further continuations will ask for approval again.'
+  m.nudgesent    '🔔 Emlékeztető elküldve — <code>%s</code>|🔔 Reminder sent — <code>%s</code>'
+  m.mutedfull    '🔕 <b>Rendben</b> — <code>%s</code>|🔕 <b>All right</b> — <code>%s</code>'
+  m.mutednote    'Erről az agentről <b>%s</b>-ig nem küldök beragadás-értesítést.|I will not send idle alerts about this agent for <b>%s</b>.'
+  m.stalledfull  '⏳ <b>Egy agent tétlenül áll, jelentés nélkül</b>|⏳ <b>An agent is idle with no report</b>'
+  m.stalledbody  '%s tétlen, és még nincs jelentése. Elképzelhető, hogy kérdéssel fejezte be a kört — arra viszont itt nincs kitől választ kapnia.|Idle for %s with no report yet. It may have ended its turn with a question — but there is nobody here to answer it.'
+  m.expiredfull  '⌛️ <b>Lejárt</b> — <code>%s</code>|⌛️ <b>Expired</b> — <code>%s</code>'
+  m.expirednote  '%s órán belül nem érkezett jóváhagyás, a kérés archiválva.|No approval arrived within %s hours; the request has been archived.'
+  m.attachline   'Csatlakozás:|Attach:'
+  m.agentline    'agent:|agent:'
+  m.reqline      'kérés:|request:'
+  m.grantline    '⏱ Felhatalmazás <b>%s</b>-ra: <code>%s</code> folytatásai eddig jóváhagyás nélkül indulnak: <b>%s</b>|⏱ Authorisation for <b>%s</b>: continuations of <code>%s</code> will start without approval until <b>%s</b>'
+  m.dupfull      '⛔️ <b>Elutasítva</b> — <code>%s</code>|⛔️ <b>Rejected</b> — <code>%s</code>'
+  m.dupnote      'Ezt az azonosítót már használtad (korábbi állapota: <b>%s</b>). Küldd újra más azonosítóval.|You have already used this identifier (previous state: <b>%s</b>). Please resend with a different one.'
+  m.autostart    '⚡️ <b>Felhatalmazás alapján elindult</b> — <code>%s</code>|⚡️ <b>Started under authorisation</b> — <code>%s</code>'
+  m.autonote     'A felhatalmazás eddig él: <b>%s</b>|The authorisation is valid until: <b>%s</b>'
+  m.autofailed   '⚠️ <b>Felhatalmazás alapján indult, de elbukott</b> — <code>%s</code>|⚠️ <b>Started under authorisation but failed</b> — <code>%s</code>'
+  m.btnsremoved  'A gombok lekerültek.|The buttons have been removed.'
+  m.nudgeshort   '🔔 <b>Emlékeztető elküldve</b> — <code>%s</code>|🔔 <b>Reminder sent</b> — <code>%s</code>'
+  m.nudgenote    'Ha döntésre várt, most a jelentésébe fogja írni.|If it was waiting on a decision, it will now write it into its report.'
+  m.nudgefail    '⚠️ Az emlékeztetőt nem sikerült elküldeni — az agent már nem fut.|⚠️ Could not send the reminder — the agent is no longer running.'
+  m.qrejected    '✖️ <b>Elutasítva</b> — <code>%s</code>|✖️ <b>Rejected</b> — <code>%s</code>'
+  m.qapproved    '▶️ <b>Jóváhagyva, indul</b> — <code>%s</code>|▶️ <b>Approved, starting</b> — <code>%s</code>'
+  m.grantfail    '⚠️ A felhatalmazást nem sikerült beállítani (nincs cél-agent).|⚠️ Could not set the authorisation (no target agent).'
+)
+
+# t <kulcs> -> a beallitott nyelvu szoveg. Ismeretlen kulcsnal a kulcsot adja
+# vissza, hogy a hianyt LASSUK, ne pedig ures uzenet menjen ki.
+t() {
+  local key="$1" pair lang
+  pair="${BRIDGE_MSG[$key]-}"
+  [[ -n "$pair" ]] || { print -r -- "$key"; return 0 }
+  lang=$(bridge_lang)
+  local txt
+  if [[ "$lang" == en ]]; then txt="${pair#*|}"; else txt="${pair%%|*}"; fi
+  # Tovabbi argumentumok: printf-behelyettesites (`%s`). Igy a valtozo a
+  # forditott szoveg BELSEJEBE kerulhet, ami nyelvenkent mas helyen van.
+  if (( $# > 1 )); then shift; printf "$txt" "$@"; print; else print -r -- "$txt"; fi
+}
+
 bridge_cfg() {                       # $1 = jq path, $2 = default
   local q="$1" d="${2-}"
   [[ -r "$BRIDGE_CONFIG" ]] || { print -r -- "$d"; return 0 }
@@ -175,7 +290,7 @@ tg_edit_message() {                  # $1 = message_id, $2 = uj szoveg
 # nincs kizaras — ezert egy frissites elveszhet.
 #
 # A legrosszabb eset nem elmeleti: a poller torol egy felhatalmazast (rv: gomb),
-# a felhasznalo megkapja a "Visszavonva." visszajelzest, kozben a relay egy epp
+# a felhasznalo megkapja a "$(t cb.revoked)" visszajelzest, kozben a relay egy epp
 # beeso keresnel a TORLES ELOTTI allapotbol dolgozik, es visszairasaval
 # FELTAMASZTJA a torolt felhatalmazast — a tovabbi folytatasok gombnyomas nelkul
 # indulnanak, mikozben a felhasznalo azt hiszi, visszavonta.
@@ -443,11 +558,13 @@ bridge_detect_stalled() {
     blog "STALLED $name (keres: $id, tetlen: $(bridge_dur_human "$idle"))"
     tg_ready || continue
     mk=$(jq -nc --arg r "$id" \
-      '{inline_keyboard:[[{text:"🔔 Emlékeztetem",callback_data:("nu:" + $r)}],
-                         [{text:"🔕 8 óra",callback_data:("s8:" + $r)},
-                          {text:"🔕 1 nap",callback_data:("sd:" + $r)},
-                          {text:"🔕 1 hét",callback_data:("sw:" + $r)}]]}')
-    tg_send_message "⏳ <b>Egy agent tétlenül áll, jelentés nélkül</b>"$'\n'"agent: <code>$name</code>"$'\n'"kérés: <code>$id</code>"$'\n'"$(bridge_dur_human "$idle") tétlen, és még nincs jelentése. Elképzelhető, hogy kérdéssel fejezte be a kört — arra viszont itt nincs kitől választ kapnia."$'\n'"Csatlakozás: <code>$(attach_hint "$name")</code>" "$mk" >/dev/null 2>&1
+        --arg sNudge "$(t btn.nudge)" --arg sM8 "$(t btn.mute8h)" \
+        --arg sMd "$(t btn.mute1d)" --arg sMw "$(t btn.mute1w)" \
+      '{inline_keyboard:[[{text:$sNudge,callback_data:("nu:" + $r)}],
+                         [{text:$sM8,callback_data:("s8:" + $r)},
+                          {text:$sMd,callback_data:("sd:" + $r)},
+                          {text:$sMw,callback_data:("sw:" + $r)}]]}')
+    tg_send_message "$(t m.stalledfull)"$'\n'"$(t m.agentline) <code>$name</code>"$'\n'"$(t m.reqline) <code>$id</code>"$'\n'"$(t m.stalledbody "$(bridge_dur_human "$idle")")"$'\n'"$(t m.attachline) <code>$(attach_hint "$name")</code>" "$mk" >/dev/null 2>&1
   done
 }
 

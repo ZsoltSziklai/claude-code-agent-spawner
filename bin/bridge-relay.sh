@@ -84,7 +84,7 @@ for f in "$REQ_DIR"/*.json; do
     (( _jmt > _smt )) || continue
     blog "DUPLICATE-ID $id (korabbi allapot: $_st)"
     set_status "$id" rejected "ez a kérés-azonosító már használatban volt (korábbi állapota: $_st) — adj új id-t"
-    notify "⛔️ <b>Elutasítva</b> — <code>$id</code>"$'\n'"Ezt az azonosítót már használtad (korábbi állapota: <b>$_st</b>). A híd a duplikált id-t korábban némán eldobta; mostantól szól. Küldd újra más azonosítóval."
+    notify "$(t m.dupfull "$id")"$'\n'"$(t m.dupnote "$_st")"
     mv -f "$f" "$ARCHIVE_DIR/$id.dup.$(date -u +%s).json" 2>/dev/null
     continue
   fi
@@ -93,7 +93,7 @@ for f in "$REQ_DIR"/*.json; do
   if ! req=$(validate_request "$f" 2>"$REQ_DIR/$id.err"); then
     reason=$(<"$REQ_DIR/$id.err")
     set_status "$id" rejected "validáció: $reason"
-    notify "⛔️ <b>Elutasítva</b> — <code>$id</code>"$'\n'"$reason"
+    notify "$(t m.rejectedfull "$id")"$'\n'"$reason"
     rm -f "$REQ_DIR/$id.err"
     print "elutasítva: $id ($reason)"
     continue
@@ -120,7 +120,7 @@ for f in "$REQ_DIR"/*.json; do
       $DRY_RUN || { tg_ready && tg_send_document "$sum" "▶️ Elindult: <code>$id</code>" >/dev/null 2>&1 }
       print "elindítva (audit): $id"
     else
-      notify "⚠️ <b>Indítás sikertelen</b> — <code>$id</code>"
+      notify "$(t m.failedshort "$id")"
       print "sikertelen: $id"
     fi
     continue
@@ -148,14 +148,14 @@ for f in "$REQ_DIR"/*.json; do
     if run_request "$id" "$req"; then
       blog "AUTO-RUN $id (felhatalmazás: $target, lejár: $(bridge_grant_human "$guntil"))"
       if tg_ready; then
-        rvmk=$(jq -nc --arg r "$greq" \
-          '{inline_keyboard:[[{text:"🚫 Felhatalmazás visszavonása",callback_data:("rv:" + $r)}]]}')
-        tg_send_message "⚡️ <b>Felhatalmazás alapján elindult</b> — <code>$id</code>"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | head -3)</pre>"$'\n'"A felhatalmazás eddig él: <b>$(bridge_grant_human "$guntil")</b>" "$rvmk" >/dev/null 2>&1
+        rvmk=$(jq -nc --arg r "$greq" --arg sRv "$(t btn.revoke)" \
+          '{inline_keyboard:[[{text:$sRv,callback_data:("rv:" + $r)}]]}')
+        tg_send_message "$(t m.autostart "$id")"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | head -3)</pre>"$'\n'"$(t m.autonote "$(bridge_grant_human "$guntil")")" "$rvmk" >/dev/null 2>&1
       fi
       print "felhatalmazás alapján elindítva: $id"
     else
       blog "AUTO-FAILED $id"
-      notify "⚠️ <b>Felhatalmazás alapján indult, de elbukott</b> — <code>$id</code>"
+      notify "$(t m.autofailed "$id")"
       print "sikertelen (felhatalmazás): $id"
     fi
     continue
@@ -168,15 +168,18 @@ for f in "$REQ_DIR"/*.json; do
   # nem adhato. A prefixek rovidek, mert a callback_data 64 bajt (id max 48).
   if [[ "$mode" == "close" ]]; then
     markup=$(jq -nc --arg id "$id" \
-      '{inline_keyboard:[[{text:"▶️ Indítás",callback_data:("ok:" + $id)},
-                          {text:"✖️ Elutasítás",callback_data:("no:" + $id)}]]}')
+        --arg sIndit "$(t btn.start)" --arg sReject "$(t btn.reject)" \
+      '{inline_keyboard:[[{text:$sIndit,callback_data:("ok:" + $id)},
+                          {text:$sReject,callback_data:("no:" + $id)}]]}')
   else
     markup=$(jq -nc --arg id "$id" \
-      '{inline_keyboard:[[{text:"▶️ Indítás",callback_data:("ok:" + $id)},
-                          {text:"✖️ Elutasítás",callback_data:("no:" + $id)}],
-                         [{text:"⏱ +1 óra",callback_data:("g1:" + $id)},
-                          {text:"⏱ +8 óra",callback_data:("g8:" + $id)},
-                          {text:"⏱ +1 nap",callback_data:("gd:" + $id)}]]}')
+        --arg sIndit "$(t btn.start)" --arg sReject "$(t btn.reject)" \
+        --arg sG1 "$(t btn.grant1h)" --arg sG8 "$(t btn.grant8h)" --arg sGd "$(t btn.grant1d)" \
+      '{inline_keyboard:[[{text:$sIndit,callback_data:("ok:" + $id)},
+                          {text:$sReject,callback_data:("no:" + $id)}],
+                         [{text:$sG1,callback_data:("g1:" + $id)},
+                          {text:$sG8,callback_data:("g8:" + $id)},
+                          {text:$sGd,callback_data:("gd:" + $id)}]]}')
   fi
   if $DRY_RUN; then
     print "  [dry-run] jóváhagyásra várna: $id"

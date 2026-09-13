@@ -309,6 +309,26 @@ yes_ "Telegram-hiba esetén is feldolgozza" \
 yes_ "a gombos üzenet szövege lemezre kerül" \
      grep -q 'print -r -- "$btn" > "$REQ_DIR/$id.button.txt"' "$ROOT/bin/bridge-relay.sh"
 
+print "\n\033[1mTelegram-nyelv: hu / en\033[0m"
+# A gombfeliratok es uzenetek egyetlen katalogusbol jonnek, hogy egy uj nyelv ne
+# jelentsen 47 call-site atirasat. Az alapertelmezes `hu`: a rendszer eddig
+# magyarul beszelt, es egy nema valtas meglepetes lenne annak, aki frissit.
+_t() { env BRIDGE_LANG="$1" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t '"$2"'' }
+is   "magyar gombfelirat"  "$(_t hu btn.start)"  "▶️ Indítás"
+is   "angol gombfelirat"   "$(_t en btn.start)"  "▶️ Start"
+is   "magyar buborék"      "$(_t hu cb.started)" "Elindítva."
+is   "angol buborék"       "$(_t en cb.started)" "Started."
+# ⚠️ Ismeretlen kulcsnal a KULCSOT adjuk vissza, nem ures sztringet: egy hianyzo
+# forditas igy LATHATO lesz, nem pedig nema, ures uzenet megy ki.
+is   "ismeretlen kulcs látható marad" "$(_t hu nincs.ilyen.kulcs)" "nincs.ilyen.kulcs"
+# Az idotartam-cimkek a szoveg BELSEJEBE kerulnek, ezert kulon kulcsok.
+is   "az időtartam is fordul"  "$(_t en dur.8h)" "8 hours"
+# Ervenytelen nyelv -> `hu`, nem ures kimenet.
+is   "érvénytelen nyelv → hu"  "$(env BRIDGE_LANG= zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; BRIDGE_CONFIG=/nincs; bridge_lang')" "hu"
+# ⚠️ A kodban NE maradjon magyar Telegram-szoveg: mind a katalogusbol jojjon.
+is   "nincs magyar szöveg a Telegram-hívásokban" \
+     "$(grep -cE '(tg_send_message|tg_edit_message|notify) .*\"[^\"]*[áéíóöőúüű]' "$ROOT"/bin/bridge-poller.sh "$ROOT"/bin/bridge-relay.sh "$ROOT"/bin/_bridge-lib.sh | awk -F: '{s+=$2} END{print s}')" "0"
+
 print "\n\033[1mduplikált kérés-azonosító: szóljon, ne nyelje el\033[0m"
 # ⚠️ A hid eddig SZO NELKUL atugrotta a mar hasznalt id-re erkezo uj kerest: se
 # agent, se hiba, se uzenet — a kuldo egy sosem valtozo statuszra varhatott.
@@ -1112,7 +1132,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=243}
+: ${SMOKE_EXPECTED:=251}
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1
