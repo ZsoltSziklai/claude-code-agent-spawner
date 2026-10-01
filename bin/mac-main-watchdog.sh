@@ -64,9 +64,9 @@ sweep_children() {
 # élő sessiont ölne — a bizonytalanságot szándékosan az élet felé billentjük.
 main_running() {
   # 1) a saját tmux sessionünk létezik, és a pane processze él
-  if tmux has-session -t "$ROOT_AGENT_NAME" 2>/dev/null; then
+  if tmux has-session -t "=$ROOT_AGENT_NAME" 2>/dev/null; then
     local pane_pid
-    pane_pid=$(tmux list-panes -t "$ROOT_AGENT_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
+    pane_pid=$(tmux list-panes -t "=$ROOT_AGENT_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
     if [[ -n "$pane_pid" ]] && kill -0 "$pane_pid" 2>/dev/null; then
       return 0
     fi
@@ -98,8 +98,8 @@ fi
 log "DOWN — restarting in tmux"
 
 # Ha van orphan tmux session "$ROOT_AGENT_NAME" néven, takarítsuk
-if tmux has-session -t "$ROOT_AGENT_NAME" 2>/dev/null; then
-  tmux kill-session -t "$ROOT_AGENT_NAME" 2>/dev/null
+if tmux has-session -t "=$ROOT_AGENT_NAME" 2>/dev/null; then
+  tmux kill-session -t "=$ROOT_AGENT_NAME" 2>/dev/null
   log "cleaned orphan tmux session"
 fi
 
