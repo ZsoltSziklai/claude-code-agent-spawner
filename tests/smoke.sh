@@ -29,6 +29,9 @@ mkdir -p "$CLAUDE_AGENT_QUEUE" "$CLAUDE_AGENT_ROOT" "$BRIDGE_DIR"/{requests,resu
 print '{"allow":[],"gate":"telegram"}' > "$BRIDGE_CONFIG"
 
 typeset -i PASS=0 FAIL=0
+# Feltetelesen kimarado allitasok szama (pl. nincs tmux) — a vart darabszambol
+# levonjuk, kulonben a suite "felbeszakadt"-ot jelez egy ep kornyezetben is.
+typeset -i SMOKE_SKIPPED=0
 ok()   { PASS+=1; printf '  \033[32m✓\033[0m %s\n' "$1" }
 bad()  { FAIL+=1; printf '  \033[31m✗\033[0m %s\n' "$1"; [[ $# -gt 1 ]] && printf '      %s\n' "$2" }
 is()   { [[ "$2" == "$3" ]] && ok "$1" || bad "$1" "kapott: ${2:-<üres>}   várt: ${3:-<üres>}" }
@@ -355,13 +358,20 @@ yes_ "a session-fájl feloldása pontosan illeszt" \
      grep -q 'list-panes -t "=$cand"' "$ROOT/bin/_agent-lib.sh"
 # Funkcionalis bizonyitek, hogy a prefix-illesztes valoban letezik — kulonben a
 # fenti harom allitas csak egy stilus-szabalyt orizne.
-if command -v tmux >/dev/null 2>&1; then
-  tmux new-session -d -s 'proba-prefix-alap' 'sleep 30' 2>/dev/null
+# ⚠️ A vart darabszamnak KOVETNIE kell ezt a blokkot. Az elso valtozat fixen
+# 266-ot vart, es a CI-ben (ahol nem volt tmux) 264 futott le -> a suite
+# "felbeszakadt"-ot jelzett egy olyan kornyezetben, ahol minden rendben volt.
+# A CI ezert telepiti a tmuxot; ez a szamolas a contributor gepere valo, ahol
+# esetleg nincs.
+if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s 'proba-prefix-alap' 'sleep 30' 2>/dev/null; then
   yes_ "a prefix-illesztés tényleg megtéveszt" \
        tmux has-session -t 'proba-prefix' 2>/dev/null
   no_  "az = előtag nem téveszt meg" \
        tmux has-session -t '=proba-prefix' 2>/dev/null
   tmux kill-session -t '=proba-prefix-alap' 2>/dev/null
+else
+  print "  \033[33m⚠\033[0m tmux nincs — a prefix-illesztés funkcionális párja kimarad"
+  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 2 ))
 fi
 
 print "\n\033[1mTelegram-nyelv: hu / en\033[0m"
@@ -1188,6 +1198,7 @@ done
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
 : ${SMOKE_EXPECTED:=266}
+SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1
