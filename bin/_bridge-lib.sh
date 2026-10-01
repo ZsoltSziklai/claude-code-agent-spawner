@@ -495,9 +495,9 @@ bridge_nudge_agent() {               # $1 = agent nev, $2 = keres id (opc.)
   source "$(dirname "${(%):-%x}")/_agent-lib.sh"
   sess=$(agent_tmux_session "$1") || { print -u2 "nem fut: $1"; return 1 }
   msg="EMLÉKEZTETŐ a hídtól: ebben a sessionben nincs kihez visszakérdezned, a válaszodat senki nem olvassa. Ha döntésre vársz, írd a kérdést, a lehetőségeket és a javaslatodat a ${fname} fájlba a munkakönyvtárad gyökerében, majd fejezd be a kört — a küldő új folytatás-kéréssel válaszol. Ha van ésszerű alapértelmezés, döntsd el magad és a jelentésben mondd el, mit választottál."
-  tmux send-keys -t "$sess" -l "${msg//$'\n'/ }" || return 1
+  tmux send-keys -t "=$sess" -l "${msg//$'\n'/ }" || return 1
   sleep 1
-  tmux send-keys -t "$sess" Enter || return 1
+  tmux send-keys -t "=$sess" Enter || return 1
 }
 
 bridge_detect_stalled() {
@@ -655,7 +655,7 @@ bridge_gc_spawned() {
   now=$(date -u +%s)
   for n in ${(f)"$(jq -r 'keys[]?' "$BRIDGE_SPAWNED" 2>/dev/null)"}; do
     [[ -n "$n" ]] || continue
-    if tmux has-session -t "agent-$n" 2>/dev/null || tmux has-session -t "$n" 2>/dev/null; then
+    if tmux has-session -t "=agent-$n" 2>/dev/null || tmux has-session -t "=$n" 2>/dev/null; then
       # Fut -> a halott-ota belyeg torlodik.
       state_edit "$BRIDGE_SPAWNED" --arg k "$n" \
         'if .[$k].not_running_since then .[$k] |= del(.not_running_since) else . end'
@@ -1103,7 +1103,7 @@ close_agent_request() {              # $1 = id, $2 = normalizált kérés JSON
     # last-prompt...), es ha kozben torlunk, ujra letrehozza a fajlt egy 800
     # bajtos vazkent -- merve 2026-08-07.
     local w=0
-    while tmux has-session -t "agent-$name" 2>/dev/null && (( w < 10 )); do sleep 1; w=$((w+1)); done
+    while tmux has-session -t "=agent-$name" 2>/dev/null && (( w < 10 )); do sleep 1; w=$((w+1)); done
     sleep 3
     if (( ${excl:-0} == 1 )) && [[ -n "$tdir" && "$tdir" == *"/projects/"*worktrees* ]]; then
       rm -rf "$tdir" && print "átirat törölve (saját worktree-könyvtár): ${tdir:t}"
@@ -1209,7 +1209,7 @@ bridge_record_sessions() {
   local n
   for n in ${(f)"$(jq -r 'keys[]' "$BRIDGE_SPAWNED" 2>/dev/null)"}; do
     [[ -n "$n" ]] || continue
-    tmux has-session -t "agent-$n" 2>/dev/null || continue
+    tmux has-session -t "=agent-$n" 2>/dev/null || continue
     bridge_record_session "$n"
   done
 }
@@ -1279,11 +1279,11 @@ reconnect_agent() {                  # $1 = id, $2 = normalizált kérés JSON
   source "$(dirname "${(%):-%x}")/_agent-lib.sh"
   bridge_is_spawned "$name" || { print -u2 "nem a híd indította: $name"; return 1 }
 
-  if tmux has-session -t "$sess" 2>/dev/null; then
-    tmux kill-session -t "$sess" 2>/dev/null
+  if tmux has-session -t "=$sess" 2>/dev/null; then
+    tmux kill-session -t "=$sess" 2>/dev/null
     # Megvarjuk a tenyleges kilepest, kulonben a nev meg foglalt.
     local w=0
-    while tmux has-session -t "$sess" 2>/dev/null && (( w < 10 )); do sleep 1; w=$((w+1)); done
+    while tmux has-session -t "=$sess" 2>/dev/null && (( w < 10 )); do sleep 1; w=$((w+1)); done
     sleep 2
   fi
   sid=$(resume_agent_session "$name") || return 1

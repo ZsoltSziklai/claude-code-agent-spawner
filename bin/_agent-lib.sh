@@ -216,7 +216,7 @@ agent_tmux_session() {               # $1 = agent nev
 kill_one_tmux() {
   local name="$1"
   if [ -z "$name" ]; then return 1; fi
-  tmux kill-session -t "agent-$name" 2>/dev/null
+  tmux kill-session -t "=agent-$name" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -299,7 +299,7 @@ agent_session_file() {
   # `^agent-` szűrésű kaszkád sem). Mindkettőt meg kell nézni, különben a
   # gyökérből indított fork „a szülő nem fut" hibával bukik.
   for cand in "agent-$name" "$name"; do
-    pane_pid=$(tmux list-panes -t "$cand" -F '#{pane_pid}' 2>/dev/null | head -1)
+    pane_pid=$(tmux list-panes -t "=$cand" -F '#{pane_pid}' 2>/dev/null | head -1)
     [[ -n "$pane_pid" ]] && break
   done
   [[ -n "$pane_pid" ]] || return 1
@@ -359,12 +359,12 @@ agent_send_prompt() {
     # csak INDULASKOR fut, ezt tehat senki nem vette le.
     # ⚠️ ESC-cel zarjuk, SOHA nem Enterrel: az az ablak a shell-elozmenyek es a
     # tobbi repo atvizsgalasat ajanlja fel — azt a felhasznalo dontse el, nem mi.
-    if "$tmuxb" capture-pane -p -t "$sess" 2>/dev/null \
+    if "$tmuxb" capture-pane -p -t "=$sess" 2>/dev/null \
          | grep -q 'Teach auto mode about your environment'; then
-      "$tmuxb" send-keys -t "$sess" Escape 2>/dev/null
+      "$tmuxb" send-keys -t "=$sess" Escape 2>/dev/null
       sleep 1
     fi
-    "$tmuxb" send-keys -t "$sess" C-u 2>/dev/null
+    "$tmuxb" send-keys -t "=$sess" C-u 2>/dev/null
     sleep 0.2
     pos=1
     while (( pos <= ${#flat} )); do
@@ -373,12 +373,12 @@ agent_send_prompt() {
       # azt KAPCSOLONAK veszi: `command send-keys: unknown flag -r`. A blokk
       # elveszett, a feladat kozepe kiesett — a G6 lepes 2026-09-01-en pontosan
       # ezen bukott el, ES a statusz megis `spawned` lett.
-      "$tmuxb" send-keys -t "$sess" -l -- "${flat[$pos,$((pos+399))]}"
+      "$tmuxb" send-keys -t "=$sess" -l -- "${flat[$pos,$((pos+399))]}"
       (( pos += 400 ))
       sleep 0.3
     done
     sleep 1
-    "$tmuxb" send-keys -t "$sess" Enter
+    "$tmuxb" send-keys -t "=$sess" Enter
     for w in 1 2 3 4 5 6 7 8; do
       sleep 2
       # -newermt: csak a kuldes ota irt atirat szamit.
@@ -499,6 +499,52 @@ transcript_exists() {                # $1 = session id
 # Sikernel a sid-et adja. Bukasnal az OKOT irja a stderr-re, hogy a naplo ne
 # talalgasson — a korabbi valtozat minden bukast "osztott cwd"-nek nevezett,
 # akkor is, ha valojaban nem talalt atiratot.
+# Egy FUTO agent argv-jebol ujrainditasi argv-t epit, a megadott session-id-vel.
+# $1 = a futo folyamat teljes argv-je, $2 = a cel session-id -> a kapcsolok
+# soronkent (a hivo olvassa be tombbe).
+#
+# ⚠️ FEHERLISTA, nem atvetel. Harom dolog, amit az atvetel elrontana, es
+# mindharom ott volt eles agentek argv-jeben 2026-10-01-en:
+#   --resume <id>    orokolt forknal a SZULO session-idje all ott (a
+#                    `mac-main-dsolar-mac` argv-je a parancskozpont atiratat
+#                    vitte), tehat az atvetel szerep-atvetelt okozna
+#   --fork-session   ujra elagaztatna: minden ujrainditas UJ session-id-t adna,
+#                    es a beszelgetes korronkent szettoredezne
+#   <pozicionalis>   a kezdo prompt. Resume mellett UJ FORDULOKENT szallna be —
+#                    a watchdog resume-aga is pontosan ezert nem fuzi hozza.
+# A --worktree is kimarad: a worktree mar letezik, ujra atadva masodikat nyitna.
+restart_argv() {
+  local argv="$1" sid="$2"
+  local -a args clean
+  args=(${(z)argv})
+  shift args                        # a binaris utvonala
+  # ⚠️ HAROM allapot kell, nem kettő. Az elso valtozat egyetlen `want` zaszlot
+  # hasznalt, es a `--resume` eseten is azt allitotta be — a kovetkezo korben
+  # viszont az "ertek megtartasa" ag futott le, tehat a REGI session-id
+  # POZICIONALIS argumentumkent atszivargott, es promptkent szallt volna be.
+  # A sajat ellenorzesem nem fogta meg (csak a `--resume` darabszamat es az utolso
+  # elemet nezte); a smoke-teszt igen.
+  local want=no a
+  for a in $args; do
+    case "$want" in
+      keep) clean+=("$a"); want=no; continue ;;
+      skip)                want=no; continue ;;
+    esac
+    case "$a" in
+      --remote-control|--permission-mode|--model|--effort|--append-system-prompt|--disallowed-tools)
+        clean+=("$a"); want=keep ;;
+      --brief|--chrome)            clean+=("$a") ;;
+      --resume)                    want=skip ;;
+      --fork-session)              : ;;
+      --worktree|--worktree=*)     : ;;
+      --*)                         clean+=("$a") ;;
+      *)                           : ;;
+    esac
+  done
+  [[ -n "$sid" ]] && clean+=("--resume" "$sid")
+  print -rl -- "${clean[@]}"
+}
+
 resolve_resume_sid() {               # $1 = nev, $2 = runtime cwd -> sid | ures+rc1
   local name="$1" rcwd="$2" sid
   sid=$(registry_field "$name" last_session_id 2>/dev/null)
@@ -549,20 +595,20 @@ auto_dismiss_modals() {
   local tries="${CLAUDE_AGENT_MODAL_TRIES:-20}"
   [ -z "$sess" ] && return 1
   for i in {1..$tries}; do
-    tmux has-session -t "$sess" 2>/dev/null || return 0
-    pane=$(tmux capture-pane -t "$sess" -p 2>/dev/null) || return 0
+    tmux has-session -t "=$sess" 2>/dev/null || return 0
+    pane=$(tmux capture-pane -t "=$sess" -p 2>/dev/null) || return 0
     if [[ "$pane" == *"fullscreen renderer"* ]]; then
       # 2 = "Not now" — never flip the user's renderer behind their back.
-      tmux send-keys -t "$sess" "2" 2>/dev/null
-      sleep 1; tmux send-keys -t "$sess" Enter 2>/dev/null; sleep 3; continue
+      tmux send-keys -t "=$sess" "2" 2>/dev/null
+      sleep 1; tmux send-keys -t "=$sess" Enter 2>/dev/null; sleep 3; continue
     elif [[ "$pane" == *"Resuming the full session"* ]]; then
       # 1 = resume from summary (recommended), 2 = full as-is.
       if [[ "$resume_mode" == "full" ]]; then
-        tmux send-keys -t "$sess" "2" 2>/dev/null
+        tmux send-keys -t "=$sess" "2" 2>/dev/null
       else
-        tmux send-keys -t "$sess" "1" 2>/dev/null
+        tmux send-keys -t "=$sess" "1" 2>/dev/null
       fi
-      sleep 1; tmux send-keys -t "$sess" Enter 2>/dev/null; sleep 3; continue
+      sleep 1; tmux send-keys -t "=$sess" Enter 2>/dev/null; sleep 3; continue
     elif [[ "$pane" == *"Is this a project you created or one you trust"* \
          || "$pane" == *"Yes, I trust this folder"* ]]; then
       # ⚠️ EZ A PARBESZED MEGOLTE A SAJAT AGENTJEINKET (2026-09-12). A generikus
@@ -585,9 +631,9 @@ auto_dismiss_modals() {
       [[ -z "$_ws" ]] && _ws=$(print -r -- "$pane" | grep -oE '/Users/[^ ]+' | head -1)
       if [[ -n "$_root" && -n "$_ws" && ( "$_ws" == "$_root" || "$_ws" == "$_root"/* ) ]]; then
         # A kijelolt valasz a `No, exit`; a bizalom a KOVETKEZO sor.
-        tmux send-keys -t "$sess" Down 2>/dev/null
+        tmux send-keys -t "=$sess" Down 2>/dev/null
         sleep 0.5
-        tmux send-keys -t "$sess" Enter 2>/dev/null
+        tmux send-keys -t "=$sess" Enter 2>/dev/null
         sleep 3
         continue
       fi
@@ -599,7 +645,7 @@ auto_dismiss_modals() {
       # lehet romboló (a bizalmi ablake epp a kilepes volt), ezert csak az
       # ISMERT, veszelytelen megerositeseket nyugtazzuk.
       if [[ "$pane" == *"fullscreen"* || "$pane" == *"Chrome"* || "$pane" == *"chrome"* ]]; then
-        tmux send-keys -t "$sess" Enter 2>/dev/null; sleep 2; continue
+        tmux send-keys -t "=$sess" Enter 2>/dev/null; sleep 2; continue
       fi
       # Ismeretlen modal: NEM tippelunk. A hivo dontse el, mit kezd vele.
       return 4

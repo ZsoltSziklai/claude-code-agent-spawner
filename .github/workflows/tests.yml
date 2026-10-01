@@ -17,6 +17,10 @@ jobs:
       - name: Fuggosegek
         run: |
           command -v jq  >/dev/null || brew install jq
+          # ⚠️ tmux KELL: a prefix-illesztes funkcionalis parja (ket eldobhato
+          # sessionnel) enelkul kimarad, es akkor a CI pont azt NEM meri, amiert
+          # a 2026-10-01-i hiba ot hetig lathatatlan maradt.
+          command -v tmux >/dev/null || brew install tmux
           command -v zsh >/dev/null || { echo "zsh hianyzik"; exit 1; }
           zsh --version
           jq --version

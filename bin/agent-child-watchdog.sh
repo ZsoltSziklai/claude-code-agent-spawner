@@ -79,7 +79,7 @@ for entry in "$CLAUDE_AGENT_LIVE"/*.json; do
   attempts=$("$JQ" -r '.restore_attempts // 0' "$entry" 2>/dev/null)
   [[ "$attempts" == <-> ]] || attempts=0
 
-  if "$TMUX_BIN" has-session -t "$sess" 2>/dev/null; then
+  if "$TMUX_BIN" has-session -t "=$sess" 2>/dev/null; then
     # Healthy — de a szamlalot CSAK akkor nullazzuk, ha a visszaallitas ota
     # eltelt MIN_STABLE masodperc. Korabban a nullazas kozvetlenul a spawn utan
     # tortent, ezert a korlat csak az INDULASKOR osszeomlo agentet fogta meg:
@@ -183,7 +183,7 @@ for entry in "$CLAUDE_AGENT_LIVE"/*.json; do
   fi
 
   sleep 5
-  if ! "$TMUX_BIN" has-session -t "$sess" 2>/dev/null; then
+  if ! "$TMUX_BIN" has-session -t "=$sess" 2>/dev/null; then
     log "ERROR $name exited within 5s (check flags / auth)"
     continue
   fi
