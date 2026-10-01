@@ -309,6 +309,61 @@ yes_ "Telegram-hiba esetén is feldolgozza" \
 yes_ "a gombos üzenet szövege lemezre kerül" \
      grep -q 'print -r -- "$btn" > "$REQ_DIR/$id.button.txt"' "$ROOT/bin/bridge-relay.sh"
 
+print "\n\033[1mújraindítás: argv-újraépítés (restart_argv)\033[0m"
+# Egy VALODI, eles argv (mac-main-dsolar-mac, 2026-10-01) — orokolt fork, tehat
+# a resume a SZULO atirata, es ott van a --fork-session is.
+_A='/Users/x/.local/bin/claude --remote-control mac-main-dsolar-mac --permission-mode auto --model claude-opus-5 --effort high --brief --chrome --fork-session --append-system-prompt EZ-A-PROMPT --resume SZULO-ID --disallowed-tools AskUserQuestion'
+_R="$(restart_argv "$_A" SAJAT-ID)"
+# ⚠️ A SZULO session-idje nem maradhat benne: azzal a gyerek a szulo
+# beszelgeteset folytatna — pont a szerep-atveteli hiba.
+is   "a szülő session-idje eltűnik"   "$(print -r -- "$_R" | grep -c '^SZULO-ID$')" "0"
+is   "a saját session-id bekerül"     "$(print -r -- "$_R" | grep -c '^SAJAT-ID$')" "1"
+is   "pontosan egy --resume van"      "$(print -r -- "$_R" | grep -c '^--resume$')" "1"
+# ⚠️ A --fork-session ujra elagaztatna: minden ujrainditas UJ session-id-t adna.
+is   "a --fork-session eldobva"       "$(print -r -- "$_R" | grep -c '^--fork-session$')" "0"
+# ⚠️ Az ertekes kapcsolok ERTEKE is megmarad (nem csak a kapcsolo).
+is   "a disallowed-tools értéke megmarad" "$(print -r -- "$_R" | grep -c '^AskUserQuestion$')" "1"
+is   "a system-prompt értéke megmarad"    "$(print -r -- "$_R" | grep -c '^EZ-A-PROMPT$')" "1"
+# ⚠️ Pozicionalis prompt: resume mellett UJ FORDULOKENT szallna be.
+_B='/Users/x/.local/bin/claude --remote-control a --brief Ez-egy-kezdo-prompt'
+is   "a pozicionális prompt eldobva"  "$(restart_argv "$_B" S | grep -c 'Ez-egy-kezdo-prompt')" "0"
+# ⚠️ A worktree mar letezik; ujra atadva masodikat nyitna.
+_C='/Users/x/.local/bin/claude --remote-control a --worktree=a --brief'
+is   "a --worktree eldobva"           "$(restart_argv "$_C" S | grep -c 'worktree')" "0"
+
+print "\n\033[1mtmux-cél: PONTOS illesztés (= előtag)\033[0m"
+# ⚠️ 2026-10-01: a `tmux has-session -t <nev>` PREFIXRE is illeszkedik. Emiatt a
+# watchdog a `mac-main-sziklaizsolthu`-t epnek latta (a futo
+# `mac-main-sziklaizsolthu-dsolar-web` illeszkedett ra) -> AUGUSZTUS 26. OTA
+# egyszer sem allitotta vissza, es a naploban egyetlen sor sem volt rola.
+# Rosszabb: az "ep" agon a last_session_id-t is igy oldotta fel, tehat a
+# dsolar-web session-id-je kerult a sziklaizsolthu live/ bejegyzesebe — egy
+# kesobbi restore IDEGEN beszelgetest folytatott volna.
+# A tmux `=` elotagja pontos egyezest ker. Ez a teszt azt orzi, hogy egyetlen
+# session-cel se maradjon prefix-erzekeny.
+_unsafe=$(grep -rnE '(has-session|kill-session|list-panes|capture-pane|send-keys)[^#]*-t "[^=]' \
+            "$ROOT"/bin "$ROOT"/claude-agent-spawner 2>/dev/null | grep -cv 'print ')
+is   "nincs prefix-érzékeny tmux-cél a kódban" "$_unsafe" "0"
+# A ket watchdog egeszseg-vizsgalata a legdragabb hely: ott a teves "ep" dontes
+# NEMA — nem naploz semmit, csak kihagyja az agentet.
+yes_ "a gyerek-watchdog pontosan illeszt" \
+     grep -q 'has-session -t "=$sess"' "$ROOT/bin/agent-child-watchdog.sh"
+yes_ "a fő watchdog pontosan illeszt" \
+     grep -q 'has-session -t "=$ROOT_AGENT_NAME"' "$ROOT/bin/mac-main-watchdog.sh"
+# A session-id feloldasa ugyanilyen kritikus: ez irja a live/ bejegyzest.
+yes_ "a session-fájl feloldása pontosan illeszt" \
+     grep -q 'list-panes -t "=$cand"' "$ROOT/bin/_agent-lib.sh"
+# Funkcionalis bizonyitek, hogy a prefix-illesztes valoban letezik — kulonben a
+# fenti harom allitas csak egy stilus-szabalyt orizne.
+if command -v tmux >/dev/null 2>&1; then
+  tmux new-session -d -s 'proba-prefix-alap' 'sleep 30' 2>/dev/null
+  yes_ "a prefix-illesztés tényleg megtéveszt" \
+       tmux has-session -t 'proba-prefix' 2>/dev/null
+  no_  "az = előtag nem téveszt meg" \
+       tmux has-session -t '=proba-prefix' 2>/dev/null
+  tmux kill-session -t '=proba-prefix-alap' 2>/dev/null
+fi
+
 print "\n\033[1mTelegram-nyelv: hu / en\033[0m"
 # A gombfeliratok es uzenetek egyetlen katalogusbol jonnek, hogy egy uj nyelv ne
 # jelentsen 47 call-site atirasat. Az alapertelmezes `hu`: a rendszer eddig
@@ -401,7 +456,7 @@ yes_ "a bizalmi párbeszédet felismerjük" \
 # munkakonyvtarra valaszolunk igent, es a pane-bol olvasott utvonalra, nem egy
 # atadott valtozora.
 yes_ "a gyökéren belüli cwd-t magától megbízhatóvá teszi" \
-     eval 'sed -n "/Is this a project you created/,/return 3/p" "$ROOT/bin/_agent-lib.sh" | grep -q "send-keys -t \"\$sess\" Down"'
+     eval 'sed -n "/Is this a project you created/,/return 3/p" "$ROOT/bin/_agent-lib.sh" | grep -q "send-keys -t \"=\$sess\" Down"'
 yes_ "a döntés a pane-ből olvasott útvonalon múlik" \
      grep -q "Accessing workspace:" "$ROOT/bin/_agent-lib.sh"
 yes_ "a gyökéren KÍVÜLI útvonalra viszont megáll" \
@@ -417,7 +472,7 @@ print "\n\033[1mhalál vs. lassúság — külön üzenet\033[0m"
 # A capture-pane akkor is elbukik, ha a session MEGSZUNT. A regi `|| break`
 # ilyenkor is "nem allt fel idoben"-t iratott ki, es ez rejtette el a valodi okot.
 yes_ "a ciklus figyeli, hogy él-e még a session" \
-     grep -q 'has-session -t "agent-$NAME" 2>/dev/null; then _died=1' "$ROOT/bin/fork-agent"
+     grep -q 'has-session -t "=agent-$NAME" 2>/dev/null; then _died=1' "$ROOT/bin/fork-agent"
 yes_ "halálnál külön ág van, a pane utolsó képével" \
      grep -q 'a session MEGSZŰNT, mielőtt készen állt volna' "$ROOT/bin/fork-agent"
 yes_ "a pane túléli a kilépést (remain-on-exit)" \
@@ -446,7 +501,7 @@ print "\n\033[1ma darabolás kötőjeles blokkot is átvisz\033[0m"
 # feladat kozepe kiesett — a G6 lepes ezen bukott el. ES a statusz megis
 # `spawned` lett, mert az ellenorzes csak az ELSO 60 karaktert nezte.
 yes_ "a send-keys lezárja az opciókat (--)" \
-     grep -q 'send-keys -t "$sess" -l -- "${flat' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'send-keys -t "=$sess" -l -- "${flat' "$ROOT/bin/_agent-lib.sh"
 yes_ "a szöveg VÉGÉT is ellenőrizzük" \
      grep -q 'fragend="${flat\[-60,-1\]}"' "$ROOT/bin/_agent-lib.sh"
 yes_ "és mindkét mintának meg kell lennie" \
@@ -461,7 +516,7 @@ yes_ "a küldés előtt megnézzük a blokkoló modalt" \
 # ⚠️ ESC, NEM Enter: az az ablak a shell-elozmenyek es a tobbi repo
 # atvizsgalasat ajanlja fel — az a felhasznalo dontese, nem a mienk.
 yes_ "Escape-pel zárjuk, nem Enterrel" \
-     grep -q 'send-keys -t "$sess" Escape' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'send-keys -t "=$sess" Escape' "$ROOT/bin/_agent-lib.sh"
 
 print "\n\033[1ma FOLYTATÁS kézbesítése is ellenőrzött\033[0m"
 # ⚠️ 2026-08-31, ELES HIBA. A fork mar reggel megkapta az ellenorzott kuldest, a
@@ -474,11 +529,11 @@ yes_ "a folytatás a közös, ellenőrzött küldést hívja" \
 yes_ "sikertelen kézbesítésnél HIBÁT jelez, nem sikert" \
      grep -q 'a folytatás NEM ért célba' "$ROOT/bin/_bridge-lib.sh"
 is   "nincs nyers egyben-küldés a folytatásban" \
-     "$(grep -c 'send-keys -t "$sess" -l "$task"' "$ROOT/bin/_bridge-lib.sh")" "0"
+     "$(grep -c 'send-keys -t "=$sess" -l "$task"' "$ROOT/bin/_bridge-lib.sh")" "0"
 # ⚠️ A beviteli sort ki kell takaritani kuldes elott: egy korabbi csonkolt kuldes
 # maradeka ott ulhet, es osszeragadna az uj szoveggel.
 yes_ "küldés előtt kitakarítjuk a beviteli sort" \
-     grep -q 'send-keys -t "$sess" C-u' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'send-keys -t "=$sess" C-u' "$ROOT/bin/_agent-lib.sh"
 
 print "\n\033[1magent-send-prompt: szűk, auditálható küldés\033[0m"
 # ⚠️ 2026-08-31: a CLI-kor G5 lepese (kaszkados lezaras) azt igenyli, hogy egy
@@ -496,7 +551,7 @@ yes_ "a wrapper létezik és futtatható" test -x "$SP"
 # merheto — csak nem tud kart okozni.
 _sp() {
   # Vegso vedelem: ha a cel BARMIERT letezo sessionre mutat, meg se probaljuk.
-  if tmux has-session -t "agent-$2" 2>/dev/null || tmux has-session -t "$2" 2>/dev/null; then
+  if tmux has-session -t "=agent-$2" 2>/dev/null || tmux has-session -t "=$2" 2>/dev/null; then
     print "TESZT-HIBA: a cél létező session ($2) — kitalált nevet használj"; return 1
   fi
   env CLAUDE_AGENT_NAME="$1" zsh "$SP" "$2" "teszt-szoveg" 2>&1
@@ -522,7 +577,7 @@ print "\n\033[1ma hosszú feladat darabolva megy ki\033[0m"
 # utolso 12 karaktere ("d nincs meg." — a boilerplate zaro szavai) maradt, es az
 # agent AZT kapta feladatnak. Haromszor bukott el emiatt a C1 lepes.
 yes_ "a promptot 400 karakteres blokkokban küldjük" \
-     grep -q 'send-keys -t "$sess" -l -- "${flat\[$pos,$((pos+399))\]}"' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'send-keys -t "=$sess" -l -- "${flat\[$pos,$((pos+399))\]}"' "$ROOT/bin/_agent-lib.sh"
 yes_ "a blokkok között várunk" \
      grep -q 'sleep 0.3' "$ROOT/bin/_agent-lib.sh"
 # ⚠️ Az egyben-kuldes ne johessen vissza semmilyen formaban.
@@ -905,7 +960,7 @@ no_  "a prompt NEM kerül a parancssorba" \
 yes_ "a fork a közös, ellenőrzött küldést hívja" \
      grep -q 'agent_send_prompt "$NAME" "$PROMPT" "$RUN_CWD"' "$ROOT/bin/fork-agent"
 yes_ "előtte megvárja, hogy a session felálljon" \
-     grep -q 'capture-pane -p -t "agent-\$NAME"' "$ROOT/bin/fork-agent"
+     grep -q 'capture-pane -p -t "=agent-\$NAME"' "$ROOT/bin/fork-agent"
 yes_ "és egy sorba vonja a többsoros feladatot" \
      grep -q 'flat="${text//$\x27\\n\x27/ }"' "$ROOT/bin/_agent-lib.sh"
 
@@ -1132,7 +1187,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=251}
+: ${SMOKE_EXPECTED:=266}
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
   exit 1

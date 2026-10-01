@@ -5,6 +5,49 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-10-01
+
+### Fixed
+
+- **A tmux session target matched by prefix, and the watchdog went blind.**
+  `tmux has-session -t <name>` accepts a prefix, not just an exact name. With a
+  running `mac-main-sziklaizsolthu-dsolar-web`, the check for
+  `mac-main-sziklaizsolthu` therefore reported *healthy* — so the watchdog
+  **never restored that agent from 2026-08-26 onwards**, and not one log line
+  mentioned it. The user restarted it by hand several times and it simply stayed
+  down.
+
+  Worse, the same resolution wrote the registry: on the "healthy" branch the
+  watchdog records `last_session_id` from the session it found, so **another
+  agent's session id landed in this agent's `live/` entry**. A later restore
+  would have continued a stranger's conversation — and once it did, two
+  processes were writing one transcript. Every tmux session target now matches
+  exactly (tmux's `=` prefix), guarded by a test that also demonstrates the
+  prefix behaviour live.
+
+### Added
+
+- **`bin/agent-update-restart.sh`** — updates the CLI and restarts the agents
+  running in tmux onto the new binary, each continuing **its own** conversation.
+  It exists because the manual "exit and let it come back" round has three traps:
+
+  - **the update has to come first.** Restart first and the freshly started
+    instance installs the next version itself and asks for a restart again —
+    measured: started 08:32:45 on 2.1.274, and by 08:33:01 2.1.286 was on disk.
+  - **the argv's resume id is not the agent's own session.** In an inherited
+    fork's argv the *parent's* session id sits there, so reusing the argv would
+    hand the child the parent's conversation. The agent's own id is read from the
+    running process, before it is killed.
+  - **what cannot be restored must not be killed.** Forks have no `live/` entry
+    (they are deliberately not resurrected), so the script restarts each agent
+    itself and only kills one for which it has already built a complete restart
+    command. An agent already on the current binary is skipped, so a second run
+    is a no-op.
+
+### Changed
+
+- 266 assertions in the smoke test (was 251).
+
 ## [1.1.0] — 2026-09-13
 
 ### Added
@@ -118,6 +161,50 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
 
+### [1.2.0] — 2026-10-01
+
+#### Javítva
+
+- **A tmux session-cél prefixre illeszkedett, és a watchdog megvakult tőle.**
+  A `tmux has-session -t <név>` nem csak pontos névre, **prefixre is**
+  illeszkedik. A futó `mac-main-sziklaizsolthu-dsolar-web` miatt a
+  `mac-main-sziklaizsolthu` vizsgálata *épnek* jelezte — a watchdog ezért
+  **2026-08-26 óta egyszer sem állította vissza**, és egyetlen naplósor sem szólt
+  róla. A felhasználó többször újraindította kézzel, és egyszerűen nem jött
+  vissza.
+
+  Rosszabb: ugyanez a feloldás írta a nyilvántartást is. Az „ép" ágon a watchdog
+  a megtalált sessionből rögzíti a `last_session_id`-t, tehát **egy másik agent
+  session-id-je került ennek az agentnek a `live/` bejegyzésébe**. Egy későbbi
+  visszaállítás idegen beszélgetést folytatott volna — és amikor megtörtént, két
+  folyamat írta ugyanazt az átiratot. Mostantól minden tmux session-cél pontosan
+  illeszt (a tmux `=` előtagja), és ezt teszt őrzi, amelyik élesben meg is
+  mutatja a prefix-viselkedést.
+
+#### Hozzáadva
+
+- **`bin/agent-update-restart.sh`** — frissíti a CLI-t, majd a tmuxban futó
+  agenteket újraindítja az új binárisra, mindegyiket a **saját** beszélgetésével.
+  Azért kell, mert a kézi „kilépek és majd visszajön" kör három csapdát rejt:
+
+  - **a frissítésnek előbb kell futnia.** Ha előbb indítunk újra, az újonnan
+    indult példány maga telepíti a következő verziót, és megint újraindítást kér
+    — mérve: 08:32:45-kor indult 2.1.274-tel, és 08:33:01-kor már a 2.1.286 volt
+    a lemezen.
+  - **az argv resume-ja nem az agent saját sessionje.** Egy örökölt fork
+    argv-jében a *szülő* session-idje áll, tehát az argv újrahasznosítása a szülő
+    beszélgetésébe tenné a gyereket. A saját id-t a futó folyamatból olvassuk ki,
+    a killelés előtt.
+  - **amit nem lehet visszaállítani, azt nem szabad megölni.** A forkoknak nincs
+    `live/` bejegyzése (szándékosan nem élesztjük újra őket), ezért a script maga
+    indítja újra mindegyiket, és csak azt öli meg, amire már összeállított egy
+    teljes újraindítási parancsot. A friss binárison futó agentet kihagyja, tehát
+    a második futás nem tesz semmit.
+
+#### Változott
+
+- 266 állítás a füst-tesztben (eddig 251).
+
 ### [1.1.0] — 2026-09-13
 
 #### Hozzáadva
@@ -227,3 +314,4 @@ jóváhagyással.
 [1.0.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.0.0
 [1.0.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.0.1
 [1.1.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.1.0
+[1.2.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.2.0
