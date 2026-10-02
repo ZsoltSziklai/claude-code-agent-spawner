@@ -495,9 +495,9 @@ bridge_nudge_agent() {               # $1 = agent nev, $2 = keres id (opc.)
   source "$(dirname "${(%):-%x}")/_agent-lib.sh"
   sess=$(agent_tmux_session "$1") || { print -u2 "nem fut: $1"; return 1 }
   msg="EMLÉKEZTETŐ a hídtól: ebben a sessionben nincs kihez visszakérdezned, a válaszodat senki nem olvassa. Ha döntésre vársz, írd a kérdést, a lehetőségeket és a javaslatodat a ${fname} fájlba a munkakönyvtárad gyökerében, majd fejezd be a kört — a küldő új folytatás-kéréssel válaszol. Ha van ésszerű alapértelmezés, döntsd el magad és a jelentésben mondd el, mit választottál."
-  tmux send-keys -t "=$sess" -l "${msg//$'\n'/ }" || return 1
+  tmux send-keys -t "=$sess:" -l "${msg//$'\n'/ }" || return 1
   sleep 1
-  tmux send-keys -t "=$sess" Enter || return 1
+  tmux send-keys -t "=$sess:" Enter || return 1
 }
 
 bridge_detect_stalled() {

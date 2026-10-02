@@ -382,7 +382,7 @@ fi
 CLAUDE_AGENT_RESUME_MODE="$RESUME_MODE" auto_dismiss_modals "agent-$NAME"
 _modal_rc=$?
 if (( _modal_rc == 3 )); then
-  _lastpane=$("$TMUX_BIN" capture-pane -p -t "=agent-$NAME" 2>/dev/null | grep -v '^$' | tail -6)
+  _lastpane=$("$TMUX_BIN" capture-pane -p -t "=agent-$NAME:" 2>/dev/null | grep -v '^$' | tail -6)
   "$TMUX_BIN" kill-session -t "=agent-$NAME" 2>/dev/null
   rm -f "$SPEC"
   $WANT_WT && remove_worktree "$CWD" "$RUN_CWD" "worktree-$NAME"
@@ -395,7 +395,7 @@ A képernyő utolsó sorai:
 ${_lastpane}"
 fi
 if (( _modal_rc == 4 )); then
-  _lastpane=$("$TMUX_BIN" capture-pane -p -t "=agent-$NAME" 2>/dev/null | grep -v '^$' | tail -8)
+  _lastpane=$("$TMUX_BIN" capture-pane -p -t "=agent-$NAME:" 2>/dev/null | grep -v '^$' | tail -8)
   "$TMUX_BIN" kill-session -t "=agent-$NAME" 2>/dev/null
   rm -f "$SPEC"
   $WANT_WT && remove_worktree "$CWD" "$RUN_CWD" "worktree-$NAME"
@@ -416,7 +416,7 @@ if [[ -n "$PROMPT" ]]; then
   _ready=0; _died=0
   for _i in {1..40}; do
     if ! "$TMUX_BIN" has-session -t "=agent-$NAME" 2>/dev/null; then _died=1; break; fi
-    _pane=$("$TMUX_BIN" capture-pane -p -t "=agent-$NAME" 2>/dev/null) || { _died=1; break }
+    _pane=$("$TMUX_BIN" capture-pane -p -t "=agent-$NAME:" 2>/dev/null) || { _died=1; break }
     [[ "$_pane" == *"⏵⏵"* || "$_pane" == *"❯"* ]] && { _ready=1; break }
     sleep 3
   done
@@ -442,7 +442,7 @@ if [[ -n "$PROMPT" ]]; then
   elif (( _died )); then
     # A session megszunt: a claude kilepett. A `remain-on-exit` miatt a pane
     # utolso kepe megvan — ez az EGYETLEN nyom arra, hogy MIERT.
-    _lastpane=$("$TMUX_BIN" capture-pane -p -t "=agent-$NAME" 2>/dev/null | grep -v '^$' | tail -8)
+    _lastpane=$("$TMUX_BIN" capture-pane -p -t "=agent-$NAME:" 2>/dev/null | grep -v '^$' | tail -8)
     "$TMUX_BIN" kill-session -t "=agent-$NAME" 2>/dev/null
     rm -f "$SPEC"
     $WANT_WT && remove_worktree "$CWD" "$RUN_CWD" "worktree-$NAME"
