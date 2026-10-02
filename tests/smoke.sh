@@ -334,6 +334,78 @@ is   "a pozicionális prompt eldobva"  "$(restart_argv "$_B" S | grep -c 'Ez-egy
 _C='/Users/x/.local/bin/claude --remote-control a --worktree=a --brief'
 is   "a --worktree eldobva"           "$(restart_argv "$_C" S | grep -c 'worktree')" "0"
 
+print "\n\033[1mkézbesítés-ellenőrzés: üres bizonyíték ≠ siker\033[0m"
+# ⚠️⚠️ 2026-10-02: a `find … -print0 | xargs -0 grep -q` pipeline URES find-ra
+# **0-val** lep ki (a BSD xargs el sem inditja a parancsot), tehat a regi
+# ellenorzes SIKERT jelentett, amikor SEMMI nem irodott — pont a teljes bukas
+# eseten. A `hw-p1-01` keres igy kapott `spawned`-et 6 masodperc alatt, mikozben
+# a send-keys `can't find pane`-nel elbukott.
+# Eloszor magat a csapdat mutatjuk meg, hogy az alatta levo allitasok ne csak egy
+# stilus-szabalyt orizzenek.
+_xt=$(mktemp -d)
+find "$_xt" -name '*.nincs-ilyen' -print0 2>/dev/null | xargs -0 grep -qlF -- minta 2>/dev/null
+is   "az üres find + xargs SIKERT jelez (ez a csapda)" "$?" "0"
+# És most a valódi függvény ugyanarra a helyzetre:
+no_  "üres könyvtárra HAMIS"              fresh_transcript_has "$_xt" 0 a b
+print '{"t":"van benne ELEJE és VEGE"}' > "$_xt/s1.jsonl"
+yes_ "mindkét minta megvan → igaz"        fresh_transcript_has "$_xt" 0 'ELEJE' 'VEGE'
+no_  "csak az eleje van meg → hamis"      fresh_transcript_has "$_xt" 0 'ELEJE' 'NINCS-ILYEN-VEGE'
+# ⚠️ Az mtime-szures a lenyeg: egy REGI atirat nem bizonyitek. A jovobeli
+# "since" minden fajlt kizar, tehat ures listat ad — az pedig HAMIS.
+no_  "a jövőbeli szűrés (= nincs friss fájl) hamis" \
+     fresh_transcript_has "$_xt" "$(( $(date +%s) + 3600 ))" 'ELEJE' 'VEGE'
+# Megadott egyetlen fajl: csak azt nezzuk (osztott cwd-n ez kulonbozteti meg az
+# agentet a szomszedjatol).
+print '{"t":"ELEJE VEGE"}' > "$_xt/s2.jsonl"
+yes_ "konkrét fájlra szűkítve is igaz"    fresh_transcript_has "$_xt" 0 'ELEJE' 'VEGE' "$_xt/s2.jsonl"
+no_  "nem létező konkrét fájlra hamis"    fresh_transcript_has "$_xt" 0 'ELEJE' 'VEGE' "$_xt/nincs.jsonl"
+# ⚠️ A macOS /usr/bin/find nem erti a `-newermt "@<epoch>"` alakot (es 0-val lep
+# ki), ezert kulso datum-ertelmezesre NEM epithetunk. Ez az allitas azt orzi,
+# hogy ne szivarogjon vissza.
+# Csak a VEGREHAJTOTT sorok szamitanak — a kommentek szandekosan emlitik, hogy
+# miert nem hasznaljuk.
+is   "nincs find -newermt végrehajtott sorban" \
+     "$(grep -n 'newermt' "$ROOT/bin/_agent-lib.sh" | grep -cv ':[[:space:]]*#')" "0"
+# Es a lenyeg funkcionalisan, a MINIMAL PATH-on (ahogy a launchd futtatja):
+_mp=$(env -i PATH=/usr/bin:/bin HOME="$HOME" zsh -c "
+  source '$ROOT/bin/_agent-lib.sh' 2>/dev/null
+  d=\$(mktemp -d); print '{\"t\":\"ELEJE VEGE\"}' > \$d/x.jsonl
+  fresh_transcript_has \$d 0 ELEJE VEGE && print IGAZ || print HAMIS
+  fresh_transcript_has \$d \$(( \$(date +%s) + 3600 )) ELEJE VEGE && print IGAZ || print HAMIS
+  rm -rf \$d")
+is   "minimál PATH-on is igaz, ha ott van"  "$(print -r -- "$_mp" | sed -n 1p)" "IGAZ"
+is   "minimál PATH-on is hamis, ha nincs friss" "$(print -r -- "$_mp" | sed -n 2p)" "HAMIS"
+rm -rf "$_xt"
+
+print "\n\033[1melbukott send-keys: azonnal hiba, nem ellenőrzés\033[0m"
+# ⚠️ 2026-10-02: a tmux `can't find pane`-nel elutasitotta a celt, a hiba csak
+# stderr-en latszott, es a fuggveny vegigfutott az ellenorzesig — ami (az akkori
+# xargs-lyuk miatt) sikert adott. Ha a send-keys elbukott, NINCS mit ellenorizni.
+# Csonkolt tmux: mindent engedunk, csak a szoveg-kuldes bukjon el.
+_st=$(mktemp -d)
+cat > "$_st/tmux" <<'STUB'
+#!/bin/sh
+case "$1" in
+  has-session)      exit 0 ;;
+  list-panes)       echo 12345; exit 0 ;;
+  capture-pane)     exit 0 ;;
+  display-message)  echo "/tmp"; exit 0 ;;
+  send-keys)        for a in "$@"; do [ "$a" = "-l" ] && exit 1; done; exit 0 ;;
+  *)                exit 0 ;;
+esac
+STUB
+chmod +x "$_st/tmux"
+_sk=$(PATH="$_st:$PATH" zsh -c "
+  source '$ROOT/bin/_agent-lib.sh'
+  agent_send_prompt proba-agent 'barmilyen feladat szovege' '$_st' 2>&1
+  print \"RC=\$?\"")
+is   "elbukott send-keysre nem ad sikert" "$(print -r -- "$_sk" | grep -c 'RC=0')" "0"
+# ⚠️ NEM `yes_ … print … | grep`: ott a cso a yes_ KIMENETET vinne tovabb, es az
+# allitas nem futna le (igy esett ki egy allitas az elso valtozatban).
+is   "és meg is mondja, hogy a send-keys bukott el" \
+     "$(print -r -- "$_sk" | grep -q 'send-keys elbukott' && print van || print nincs)" "van"
+rm -rf "$_st"
+
 print "\n\033[1mtmux-cél: PONTOS illesztés (= előtag)\033[0m"
 # ⚠️ 2026-10-01: a `tmux has-session -t <nev>` PREFIXRE is illeszkedik. Emiatt a
 # watchdog a `mac-main-sziklaizsolthu`-t epnek latta (a futo
@@ -363,16 +435,38 @@ yes_ "a session-fájl feloldása pontosan illeszt" \
 # "felbeszakadt"-ot jelzett egy olyan kornyezetben, ahol minden rendben volt.
 # A CI ezert telepiti a tmuxot; ez a szamolas a contributor gepere valo, ahol
 # esetleg nincs.
-if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s 'proba-prefix-alap' 'sleep 30' 2>/dev/null; then
+_ps='proba-prefix-alap'
+if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "$_ps" 'sleep 30' 2>/dev/null; then
   yes_ "a prefix-illesztés tényleg megtéveszt" \
        tmux has-session -t 'proba-prefix' 2>/dev/null
   no_  "az = előtag nem téveszt meg" \
        tmux has-session -t '=proba-prefix' 2>/dev/null
-  tmux kill-session -t '=proba-prefix-alap' 2>/dev/null
+  # ⚠️⚠️ 2026-10-02: AZ `=` NEM MINDEN CELRA JO. A `=nev` session-celkent helyes
+  # (has-session, kill-session, list-panes), PANE-celkent viszont a tmux
+  # `can't find pane: =nev`-vel elutasitja — ahhoz `=nev:` kell.
+  # Az elozo nap javitasa ezert eltorte a FELADAT-KEZBESITEST (`send-keys`), a
+  # modal-megvalaszolast es a fork-diagnosztikat is, es a hid megis `spawned`-et
+  # irt: "can't find pane: =agent-mac-main-dsolar-mac" allt a status
+  # uzeneteben, az agent pedig tetlenul ult.
+  # ⚠️ A TANULSAG A TESZTROL: az elozo nap allitasai a FORRASBAN kerestek a
+  # `-t "="` mintat. Az illeszkedett — a kod viszont nem mukodott. Egy mintara
+  # illeszkedo forras nem bizonyitek; ezert mind a negy iget VALODI sessionon
+  # futtatjuk le.
+  yes_ "has-session elfogadja a =nevet"   tmux has-session  -t "=$_ps" 2>/dev/null
+  yes_ "list-panes elfogadja a =nevet"    tmux list-panes   -t "=$_ps" 2>/dev/null
+  no_  "capture-pane ELUTASITJA a =nevet" tmux capture-pane -p -t "=$_ps" 2>/dev/null
+  no_  "send-keys ELUTASITJA a =nevet"    tmux send-keys    -t "=$_ps" '' 2>/dev/null
+  yes_ "capture-pane jó a =nev: alakkal"  tmux capture-pane -p -t "=$_ps:" 2>/dev/null
+  yes_ "send-keys jó a =nev: alakkal"     tmux send-keys    -t "=$_ps:" '' 2>/dev/null
+  tmux kill-session -t "=$_ps" 2>/dev/null
 else
   print "  \033[33m⚠\033[0m tmux nincs — a prefix-illesztés funkcionális párja kimarad"
-  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 2 ))
+  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 8 ))
 fi
+# A kodban minden pane-cel `:`-re vegzodjon. Ez a mintara epulo allitas MAR CSAK
+# kiegeszites a fenti funkcionalis par mellett, nem helyette.
+is   "nincs kettőspont nélküli pane-cél" \
+     "$(grep -rcE '(capture-pane|send-keys)[^#]*-t \"=[^\"]*[^:]\"' "$ROOT"/bin "$ROOT"/claude-agent-spawner 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')" "0"
 
 print "\n\033[1mTelegram-nyelv: hu / en\033[0m"
 # A gombfeliratok es uzenetek egyetlen katalogusbol jonnek, hogy egy uj nyelv ne
@@ -466,7 +560,7 @@ yes_ "a bizalmi párbeszédet felismerjük" \
 # munkakonyvtarra valaszolunk igent, es a pane-bol olvasott utvonalra, nem egy
 # atadott valtozora.
 yes_ "a gyökéren belüli cwd-t magától megbízhatóvá teszi" \
-     eval 'sed -n "/Is this a project you created/,/return 3/p" "$ROOT/bin/_agent-lib.sh" | grep -q "send-keys -t \"=\$sess\" Down"'
+     eval 'sed -n "/Is this a project you created/,/return 3/p" "$ROOT/bin/_agent-lib.sh" | grep -q "send-keys -t \"=\$sess:\" Down"'
 yes_ "a döntés a pane-ből olvasott útvonalon múlik" \
      grep -q "Accessing workspace:" "$ROOT/bin/_agent-lib.sh"
 yes_ "a gyökéren KÍVÜLI útvonalra viszont megáll" \
@@ -498,7 +592,7 @@ print "\n\033[1ma kézbesítés-ellenőrzés csak FRISS átiratot fogad el\033[0
 # atiratra illeszkedett, sikert jelentett, es a `spawned` megint hazudott,
 # mikozben a feladat el sem indult.
 yes_ "csak a küldés óta írt átirat számít" \
-     grep -q "find \"\$tdir\" -name '\*.jsonl' -newermt" "$ROOT/bin/_agent-lib.sh"
+     grep -q 'stat -f %m' "$ROOT/bin/_agent-lib.sh"
 # A minta a LAPOSITOTT szovegbol jon: a nyers valtozat sortoresei tobbsoros
 # grep-mintat csinalnanak.
 yes_ "a minta a lapított szövegből jön" \
@@ -511,11 +605,11 @@ print "\n\033[1ma darabolás kötőjeles blokkot is átvisz\033[0m"
 # feladat kozepe kiesett — a G6 lepes ezen bukott el. ES a statusz megis
 # `spawned` lett, mert az ellenorzes csak az ELSO 60 karaktert nezte.
 yes_ "a send-keys lezárja az opciókat (--)" \
-     grep -q 'send-keys -t "=$sess" -l -- "${flat' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'send-keys -t "=$sess:" -l -- "${flat' "$ROOT/bin/_agent-lib.sh"
 yes_ "a szöveg VÉGÉT is ellenőrizzük" \
      grep -q 'fragend="${flat\[-60,-1\]}"' "$ROOT/bin/_agent-lib.sh"
 yes_ "és mindkét mintának meg kell lennie" \
-     grep -q 'xargs -0 grep -qlF -- "$fragend"' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'fresh_transcript_has "$tdir"' "$ROOT/bin/_agent-lib.sh"
 
 print "\n\033[1mblokkoló modal a küldés előtt\033[0m"
 # ⚠️ 2026-09-01: egy FUTO agent sessionjeben KOZBEN ugrott fel a "Teach auto mode
@@ -526,7 +620,7 @@ yes_ "a küldés előtt megnézzük a blokkoló modalt" \
 # ⚠️ ESC, NEM Enter: az az ablak a shell-elozmenyek es a tobbi repo
 # atvizsgalasat ajanlja fel — az a felhasznalo dontese, nem a mienk.
 yes_ "Escape-pel zárjuk, nem Enterrel" \
-     grep -q 'send-keys -t "=$sess" Escape' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'send-keys -t "=$sess:" Escape' "$ROOT/bin/_agent-lib.sh"
 
 print "\n\033[1ma FOLYTATÁS kézbesítése is ellenőrzött\033[0m"
 # ⚠️ 2026-08-31, ELES HIBA. A fork mar reggel megkapta az ellenorzott kuldest, a
@@ -539,11 +633,11 @@ yes_ "a folytatás a közös, ellenőrzött küldést hívja" \
 yes_ "sikertelen kézbesítésnél HIBÁT jelez, nem sikert" \
      grep -q 'a folytatás NEM ért célba' "$ROOT/bin/_bridge-lib.sh"
 is   "nincs nyers egyben-küldés a folytatásban" \
-     "$(grep -c 'send-keys -t "=$sess" -l "$task"' "$ROOT/bin/_bridge-lib.sh")" "0"
+     "$(grep -c 'send-keys -t "=$sess:" -l "$task"' "$ROOT/bin/_bridge-lib.sh")" "0"
 # ⚠️ A beviteli sort ki kell takaritani kuldes elott: egy korabbi csonkolt kuldes
 # maradeka ott ulhet, es osszeragadna az uj szoveggel.
 yes_ "küldés előtt kitakarítjuk a beviteli sort" \
-     grep -q 'send-keys -t "=$sess" C-u' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'send-keys -t "=$sess:" C-u' "$ROOT/bin/_agent-lib.sh"
 
 print "\n\033[1magent-send-prompt: szűk, auditálható küldés\033[0m"
 # ⚠️ 2026-08-31: a CLI-kor G5 lepese (kaszkados lezaras) azt igenyli, hogy egy
@@ -587,7 +681,7 @@ print "\n\033[1ma hosszú feladat darabolva megy ki\033[0m"
 # utolso 12 karaktere ("d nincs meg." — a boilerplate zaro szavai) maradt, es az
 # agent AZT kapta feladatnak. Haromszor bukott el emiatt a C1 lepes.
 yes_ "a promptot 400 karakteres blokkokban küldjük" \
-     grep -q 'send-keys -t "=$sess" -l -- "${flat\[$pos,$((pos+399))\]}"' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'send-keys -t "=$sess:" -l -- "${flat\[$pos,$((pos+399))\]}"' "$ROOT/bin/_agent-lib.sh"
 yes_ "a blokkok között várunk" \
      grep -q 'sleep 0.3' "$ROOT/bin/_agent-lib.sh"
 # ⚠️ Az egyben-kuldes ne johessen vissza semmilyen formaban.
@@ -607,7 +701,7 @@ print "\n\033[1ma feladat kiküldése ellenőrzött\033[0m"
 # NEGATIVOT ad — 2026-08-31-en emiatt kuldte ki a fuggveny KETSZER a feladatot.
 # Az atirat a hiteles forras: ott a user-uzenet egyben all.
 yes_ "a kiküldést az ÁTIRATBÓL ellenőrizzük" \
-     grep -q 'xargs -0 grep -qlF -- "$frag"' "$ROOT/bin/_agent-lib.sh"
+     grep -q 'fresh_transcript_has' "$ROOT/bin/_agent-lib.sh"
 is   "és nem a pane-ből" \
      "$(grep -c 'capture-pane .*grep -qF' "$ROOT/bin/_agent-lib.sh")" "0"
 yes_ "sikertelenség esetén újrapróbál" \
@@ -970,7 +1064,7 @@ no_  "a prompt NEM kerül a parancssorba" \
 yes_ "a fork a közös, ellenőrzött küldést hívja" \
      grep -q 'agent_send_prompt "$NAME" "$PROMPT" "$RUN_CWD"' "$ROOT/bin/fork-agent"
 yes_ "előtte megvárja, hogy a session felálljon" \
-     grep -q 'capture-pane -p -t "=agent-\$NAME"' "$ROOT/bin/fork-agent"
+     grep -q 'capture-pane -p -t "=agent-\$NAME:"' "$ROOT/bin/fork-agent"
 yes_ "és egy sorba vonja a többsoros feladatot" \
      grep -q 'flat="${text//$\x27\\n\x27/ }"' "$ROOT/bin/_agent-lib.sh"
 
@@ -1197,7 +1291,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=266}
+: ${SMOKE_EXPECTED:=285}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

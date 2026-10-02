@@ -319,6 +319,50 @@ agent_session_field() {              # $1 = agent név, $2 = mező
 agent_session_id()  { agent_session_field "$1" sessionId }
 agent_session_cwd() { agent_session_field "$1" cwd }
 
+# Szerepel-e MINDKET minta a $2 ota irt atiratok valamelyikeben?
+# $1 = atirat-konyvtar, $2 = epoch (ettol frissek szamitanak), $3,$4 = a ket minta
+# $5 = (opcionalis) EGY konkret atirat-fajl; ha megadva, csak azt nezzuk.
+#
+# ⚠️⚠️ EZ A FUGGVENY EGY HAMIS-ZOLD MIATT SZULETETT, 2026-10-02.
+# Korabban igy allt, a kuldo fuggvenyben:
+#     find "$tdir" -name '*.jsonl' -newermt "@$t" -print0 | xargs -0 grep -qlF -- "$frag"
+# A macOS (BSD) `xargs` URES bemenetre EL SEM INDITJA a parancsot, es **0-val lep
+# ki** — a pipeline kilepesi erteke tehat SIKER. Vagyis ha semmi nem irodott
+# (mert a kuldes teljesen elbukott), akkor nem volt friss fajl, a find semmit nem
+# adott, es az ellenorzes SIKERT jelentett. Minel kevesebb a bizonyitek, annal
+# biztosabb a "megerkezett" — pontosan forditva, mint kellene.
+# Igy kapott a `hw-p1-01` keres `spawned` statuszt 6 masodperc alatt, mikozben a
+# `send-keys` `can't find pane`-nel elbukott, es az agent tetlenul allt.
+# Mostantol: nincs xargs, es URES fajllista = HAMIS, nem igaz.
+fresh_transcript_has() {
+  local tdir="$1" since="$2" a="$3" b="$4" only="${5-}"
+  local -a files
+  if [[ -n "$only" ]]; then
+    [[ -f "$only" ]] || return 1
+    files=("$only")
+  else
+    [[ -d "$tdir" ]] || return 1
+    # ⚠️⚠️ NEM `find -newermt "@<epoch>"`. A macOS `/usr/bin/find` ezt az alakot
+    # NEM ERTI: `find: Can't parse date/time: @1790930971` — es **0-val lep ki**,
+    # tehat meg egy `|| return 1` sem fogta volna meg. Interaktiv shellben a
+    # fejleszto gepen a `find` egy alias (bfs), ami ERTI — a launchd-jobok viszont
+    # a /usr/bin/find-ot kapjak. Ezert a kuldes-ellenorzes ELESBEN mindig ures
+    # listat kapott, az akkori xargs-lanc pedig abbol SIKERT csinalt: a
+    # "`spawned` = a feladat bizonyitottan megerkezett" garancia a launchd alatt
+    # nem teljesult. Most zsh-glob + `stat -f %m`, kulso datum-ertelmezes nelkul.
+    local -a _all; local _f
+    _all=("$tdir"/*.jsonl(N.))
+    for _f in $_all; do
+      (( $(stat -f %m "$_f" 2>/dev/null || echo 0) >= since )) && files+=("$_f")
+    done
+  fi
+  # ⚠️ URES LISTA = NEM bizonyitek. Ez az egesz fuggveny letenek az oka.
+  (( ${#files} )) || return 1
+  grep -qlF -- "$a" "${files[@]}" 2>/dev/null || return 1
+  grep -qlF -- "$b" "${files[@]}" 2>/dev/null || return 1
+  return 0
+}
+
 # --- feladat bekuldese egy futo agentbe (darabolva + ellenorizve) ----------
 # ⚠️ KET eles hiba tanulsaga egyben, mindketto 2026-08-31:
 #  1) DARABOLNI kell. Egy 1796 karakteres promptbol PONTOSAN 774 erkezett meg,
@@ -348,6 +392,10 @@ agent_send_prompt() {
   # a feladat el sem indult — a `spawned` megint hazudott. Az mtime-szures teszi
   # a mintat "ebben a korben erkezett"-te.
   t0=$(date +%s)
+  # Az agent SAJAT atirata, ha feloldhato (a futo folyamat allapotfajljabol).
+  local own="" _osid
+  _osid=$(agent_session_id "$name" 2>/dev/null || true)
+  [[ -n "$_osid" && -f "$tdir/$_osid.jsonl" ]] && own="$tdir/$_osid.jsonl"
   for try in 1 2; do
     # ⚠️ ELOSZOR TAKARITSUK KI a beviteli sort. Egy korabbi, csonkolt kuldes
     # MARADEKA ott ulhet elkuldetlenul — 2026-08-31-en a CLI-agent sorában
@@ -359,13 +407,18 @@ agent_send_prompt() {
     # csak INDULASKOR fut, ezt tehat senki nem vette le.
     # ⚠️ ESC-cel zarjuk, SOHA nem Enterrel: az az ablak a shell-elozmenyek es a
     # tobbi repo atvizsgalasat ajanlja fel — azt a felhasznalo dontse el, nem mi.
-    if "$tmuxb" capture-pane -p -t "=$sess" 2>/dev/null \
+    if "$tmuxb" capture-pane -p -t "=$sess:" 2>/dev/null \
          | grep -q 'Teach auto mode about your environment'; then
-      "$tmuxb" send-keys -t "=$sess" Escape 2>/dev/null
+      "$tmuxb" send-keys -t "=$sess:" Escape 2>/dev/null
       sleep 1
     fi
-    "$tmuxb" send-keys -t "=$sess" C-u 2>/dev/null
+    "$tmuxb" send-keys -t "=$sess:" C-u 2>/dev/null
     sleep 0.2
+    # ⚠️ A send-keys KILEPESI ERTEKET nezzuk. 2026-10-02-ig eldobtuk, es amikor a
+    # tmux `can't find pane`-nel elutasitotta a celt, a hiba csak stderr-en
+    # latszott — a fuggveny vegigfutott, es (a fenti xargs-lyuk miatt) sikert
+    # jelentett. Egy elbukott send-keys utan NINCS mit ellenorizni.
+    local _sendfail=false
     pos=1
     while (( pos <= ${#flat} )); do
       # ⚠️ A `--` KOTELEZO. A darabolas kozepen egy blokk KOTOJELLEL kezdodhet
@@ -373,12 +426,21 @@ agent_send_prompt() {
       # azt KAPCSOLONAK veszi: `command send-keys: unknown flag -r`. A blokk
       # elveszett, a feladat kozepe kiesett — a G6 lepes 2026-09-01-en pontosan
       # ezen bukott el, ES a statusz megis `spawned` lett.
-      "$tmuxb" send-keys -t "=$sess" -l -- "${flat[$pos,$((pos+399))]}"
+      if ! "$tmuxb" send-keys -t "=$sess:" -l -- "${flat[$pos,$((pos+399))]}"; then
+        _sendfail=true; break
+      fi
       (( pos += 400 ))
       sleep 0.3
     done
+    if $_sendfail; then
+      print -u2 "a send-keys elbukott ($sess) — a feladat nem ment be"
+      continue
+    fi
     sleep 1
-    "$tmuxb" send-keys -t "=$sess" Enter
+    if ! "$tmuxb" send-keys -t "=$sess:" Enter; then
+      print -u2 "a lezáró Enter nem ment el ($sess)"
+      continue
+    fi
     for w in 1 2 3 4 5 6 7 8; do
       sleep 2
       # -newermt: csak a kuldes ota irt atirat szamit.
@@ -386,10 +448,11 @@ agent_send_prompt() {
       # blokk kozepen elveszett (a hianyzo `--` miatt), az ELSO 60 karakter
       # viszont rendben megerkezett — az ellenorzes atengedte, a statusz
       # `spawned` lett, es az agent egy CSONKA feladatot kapott.
-      if find "$tdir" -name '*.jsonl' -newermt "@$((t0-2))" -print0 2>/dev/null \
-           | xargs -0 grep -qlF -- "$frag" 2>/dev/null \
-         && find "$tdir" -name '*.jsonl' -newermt "@$((t0-2))" -print0 2>/dev/null \
-           | xargs -0 grep -qlF -- "$fragend" 2>/dev/null; then
+      # ⚠️ Ha fel tudjuk oldani az agent SAJAT atiratat, CSAK azt nezzuk. A zaro
+      # minta az augment_task boilerplate-je, ami kilenc atiratban ott van (merve
+      # 2026-10-02) — onmagaban tehat nem kulonbozteti meg a kort, es osztott
+      # cwd-n MAS agent atirata is illeszkedhet.
+      if fresh_transcript_has "$tdir" "$((t0-2))" "$frag" "$fragend" "$own"; then
         sent=true; break
       fi
     done
@@ -596,19 +659,19 @@ auto_dismiss_modals() {
   [ -z "$sess" ] && return 1
   for i in {1..$tries}; do
     tmux has-session -t "=$sess" 2>/dev/null || return 0
-    pane=$(tmux capture-pane -t "=$sess" -p 2>/dev/null) || return 0
+    pane=$(tmux capture-pane -t "=$sess:" -p 2>/dev/null) || return 0
     if [[ "$pane" == *"fullscreen renderer"* ]]; then
       # 2 = "Not now" — never flip the user's renderer behind their back.
-      tmux send-keys -t "=$sess" "2" 2>/dev/null
-      sleep 1; tmux send-keys -t "=$sess" Enter 2>/dev/null; sleep 3; continue
+      tmux send-keys -t "=$sess:" "2" 2>/dev/null
+      sleep 1; tmux send-keys -t "=$sess:" Enter 2>/dev/null; sleep 3; continue
     elif [[ "$pane" == *"Resuming the full session"* ]]; then
       # 1 = resume from summary (recommended), 2 = full as-is.
       if [[ "$resume_mode" == "full" ]]; then
-        tmux send-keys -t "=$sess" "2" 2>/dev/null
+        tmux send-keys -t "=$sess:" "2" 2>/dev/null
       else
-        tmux send-keys -t "=$sess" "1" 2>/dev/null
+        tmux send-keys -t "=$sess:" "1" 2>/dev/null
       fi
-      sleep 1; tmux send-keys -t "=$sess" Enter 2>/dev/null; sleep 3; continue
+      sleep 1; tmux send-keys -t "=$sess:" Enter 2>/dev/null; sleep 3; continue
     elif [[ "$pane" == *"Is this a project you created or one you trust"* \
          || "$pane" == *"Yes, I trust this folder"* ]]; then
       # ⚠️ EZ A PARBESZED MEGOLTE A SAJAT AGENTJEINKET (2026-09-12). A generikus
@@ -631,9 +694,9 @@ auto_dismiss_modals() {
       [[ -z "$_ws" ]] && _ws=$(print -r -- "$pane" | grep -oE '/Users/[^ ]+' | head -1)
       if [[ -n "$_root" && -n "$_ws" && ( "$_ws" == "$_root" || "$_ws" == "$_root"/* ) ]]; then
         # A kijelolt valasz a `No, exit`; a bizalom a KOVETKEZO sor.
-        tmux send-keys -t "=$sess" Down 2>/dev/null
+        tmux send-keys -t "=$sess:" Down 2>/dev/null
         sleep 0.5
-        tmux send-keys -t "=$sess" Enter 2>/dev/null
+        tmux send-keys -t "=$sess:" Enter 2>/dev/null
         sleep 3
         continue
       fi
@@ -645,7 +708,7 @@ auto_dismiss_modals() {
       # lehet romboló (a bizalmi ablake epp a kilepes volt), ezert csak az
       # ISMERT, veszelytelen megerositeseket nyugtazzuk.
       if [[ "$pane" == *"fullscreen"* || "$pane" == *"Chrome"* || "$pane" == *"chrome"* ]]; then
-        tmux send-keys -t "=$sess" Enter 2>/dev/null; sleep 2; continue
+        tmux send-keys -t "=$sess:" Enter 2>/dev/null; sleep 2; continue
       fi
       # Ismeretlen modal: NEM tippelunk. A hivo dontse el, mit kezd vele.
       return 4

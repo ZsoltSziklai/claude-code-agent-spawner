@@ -287,8 +287,8 @@ Elutasítás esetén semmi nem indul."
   # nobody is attached to answer them, so answer them here.
   if typeset -f auto_dismiss_modals >/dev/null; then
     auto_dismiss_modals "$tmux_session"
-  elif "$TMUX_BIN" capture-pane -t "=$tmux_session" -p 2>/dev/null | grep -q "Enter to confirm"; then
-    "$TMUX_BIN" send-keys -t "=$tmux_session" Enter
+  elif "$TMUX_BIN" capture-pane -t "=$tmux_session:" -p 2>/dev/null | grep -q "Enter to confirm"; then
+    "$TMUX_BIN" send-keys -t "=$tmux_session:" Enter
     log "AUTO-ENTER chrome confirmation for $uuid"
     sleep 1
   fi

@@ -5,6 +5,54 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-10-02
+
+### Fixed
+
+- **Delivery verification reported success when there was no evidence at all.**
+  The check was `find … -newermt "@<epoch>" -print0 | xargs -0 grep -q …`, and it
+  had two independent holes that lined up into a false green:
+
+  - macOS's `/usr/bin/find` **cannot parse `@<epoch>`**
+    (`find: Can't parse date/time: @1790930971`) and **exits 0** anyway, so not
+    even a `|| return 1` would have caught it. On a developer's interactive shell
+    `find` may be an alias for a replacement that does understand it — launchd
+    jobs get `/usr/bin/find`.
+  - BSD `xargs` **does not run the command at all** on empty input and **exits 0**,
+    so the pipeline's status was success.
+
+  Together: no fresh transcript → `find` silent → `xargs` exits 0 → "the task
+  arrived". The less evidence there was, the more certain the success. This means
+  the project's core guarantee — *`spawned` means the task provably arrived* — did
+  not hold under launchd. The check is now a function of its own
+  (`fresh_transcript_has`) with no `xargs` and no external date parsing (zsh glob
+  + `stat -f %m`), and **an empty file list is false, not true**.
+
+- **A failed `send-keys` went unnoticed.** Its exit status was discarded, so when
+  tmux rejected the target the error only appeared on stderr while the function
+  ran on to the verification above. After a failed send there is nothing to
+  verify: the attempt now aborts and says so.
+
+- **Pane targets need `=name:`, not `=name`.** v1.2.0 switched every tmux target
+  to the exact-match `=` prefix, which is right for *session* targets
+  (`has-session`, `kill-session`, `list-panes`) but **not for pane targets**:
+  `capture-pane` and `send-keys` reject `=name` with `can't find pane`. This broke
+  task delivery, modal auto-dismissal and fork diagnostics for one day — 22 call
+  sites, now `=name:`.
+
+  Measured consequence: request `hw-p1-01` was approved, the bridge wrote
+  `spawned` within 6 seconds with the message `can't find pane: …`, and the agent
+  sat idle. The task was re-delivered by hand and the round completed.
+
+### Changed
+
+- 285 assertions in the smoke test (was 266). The new ones are **functional**:
+  the four tmux verbs are run against a real throwaway session, the empty-`xargs`
+  trap is demonstrated before it is guarded, and `fresh_transcript_has` is
+  exercised on the launchd-style minimal `PATH`. Two assertions that pinned the
+  **old, broken** implementation (`xargs -0 grep -qlF`) were replaced — a test
+  that asserts the presence of a bug protects the bug.
+
 ## [1.2.0] — 2026-10-01
 
 ### Fixed
@@ -161,6 +209,55 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
 
+### [1.2.1] — 2026-10-02
+
+#### Javítva
+
+- **A kézbesítés-ellenőrzés sikert jelentett, amikor semmi bizonyíték nem volt.**
+  A próba `find … -newermt "@<epoch>" -print0 | xargs -0 grep -q …` volt, és két
+  független lyuk állt össze benne hamis zölddé:
+
+  - a macOS `/usr/bin/find` **nem érti az `@<epoch>` alakot**
+    (`find: Can't parse date/time: @1790930971`), és **mégis 0-val lép ki** — tehát
+    még egy `|| return 1` sem fogta volna meg. A fejlesztő interaktív shelljében a
+    `find` lehet egy alias egy olyan programra, ami érti; a launchd-jobok a
+    `/usr/bin/find`-ot kapják.
+  - a BSD `xargs` üres bemenetre **el sem indítja** a parancsot, és **0-val lép
+    ki**, tehát a pipeline kilépési értéke siker.
+
+  A kettő együtt: nincs friss átirat → a `find` néma → az `xargs` 0-val kilép →
+  „a feladat megérkezett". Minél kevesebb a bizonyíték, annál biztosabb a siker.
+  Ez azt jelenti, hogy a projekt alapgaranciája — *a `spawned` azt jelenti, hogy a
+  feladat bizonyítottan megérkezett* — a launchd alatt nem teljesült. A próba
+  mostantól önálló függvény (`fresh_transcript_has`), `xargs` és külső
+  dátum-értelmezés nélkül (zsh-glob + `stat -f %m`), és **az üres fájllista hamis,
+  nem igaz**.
+
+- **Az elbukott `send-keys` észrevétlen maradt.** A kilépési értékét eldobtuk, így
+  amikor a tmux elutasította a célt, a hiba csak stderr-en látszott, a függvény
+  pedig továbbfutott a fenti ellenőrzésig. Elbukott küldés után nincs mit
+  ellenőrizni: a próbálkozás mostantól megáll, és meg is mondja, miért.
+
+- **A pane-célokhoz `=név:` kell, nem `=név`.** Az 1.2.0 minden tmux-célt a pontos
+  illesztésű `=` előtagra váltott, ami a **session**-céloknál helyes
+  (`has-session`, `kill-session`, `list-panes`), a **pane**-céloknál viszont nem: a
+  `capture-pane` és a `send-keys` `can't find pane`-nel elutasítja a `=név` alakot.
+  Ez egy napra eltörte a feladat-kézbesítést, a modál-megválaszolást és a
+  fork-diagnosztikát — 22 hívási hely, mostantól `=név:`.
+
+  A mért következmény: a `hw-p1-01` kérést jóváhagyták, a híd 6 másodperc alatt
+  `spawned`-et írt `can't find pane: …` üzenettel, az agent pedig tétlenül állt. A
+  feladatot kézzel újraküldtük, és a kör lezárult.
+
+#### Változott
+
+- 285 állítás a füst-tesztben (eddig 266). Az újak **funkcionálisak**: a négy
+  tmux-ige valódi, eldobható sessionön fut le, az üres-`xargs` csapdát megmutatjuk,
+  mielőtt védünk ellene, és a `fresh_transcript_has` a launchd-szerű minimál
+  `PATH`-on is mérve van. Két állítás a **régi, hibás** implementációt rögzítette
+  (`xargs -0 grep -qlF`) — azokat lecseréltük: egy teszt, amelyik egy hiba
+  jelenlétét állítja, magát a hibát védi.
+
 ### [1.2.0] — 2026-10-01
 
 #### Javítva
@@ -315,3 +412,4 @@ jóváhagyással.
 [1.0.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.0.1
 [1.1.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.1.0
 [1.2.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.2.0
+[1.2.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.2.1
