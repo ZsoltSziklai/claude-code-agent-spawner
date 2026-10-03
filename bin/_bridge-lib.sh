@@ -1031,8 +1031,8 @@ attach_hint() {                      # $1 = agent nev
   # Ures nev -> semmi. Kulonben csonka parancsot adnank ("tmux attach -t agent-"),
   # ami rosszabb, mint semmit nem mondani.
   [[ -n "$n" ]] || return 1
-  if tmux has-session -t "agent-$n" 2>/dev/null; then print -r -- "tmux attach -t agent-$n"
-  elif tmux has-session -t "$n" 2>/dev/null; then print -r -- "tmux attach -t $n"
+  if tmux has-session -t "=agent-$n" 2>/dev/null; then print -r -- "tmux attach -t agent-$n"
+  elif tmux has-session -t "=$n" 2>/dev/null; then print -r -- "tmux attach -t $n"
   else print -r -- "tmux attach -t agent-$n"; fi
 }
 
@@ -1258,7 +1258,7 @@ resume_agent_session() {             # $1 = agent nev -> 0, ha fut a vegen
   cmd+=" --model ${(qq)model} --effort ${(qq)effort} --brief --chrome"
   tmux new-session -d -s "$sess" "$cmd" || { print -u2 "tmux new-session sikertelen"; return 1 }
   sleep 6
-  tmux has-session -t "$sess" 2>/dev/null || { print -u2 "a visszaállított session azonnal kilépett"; return 1 }
+  tmux has-session -t "=$sess" 2>/dev/null || { print -u2 "a visszaállított session azonnal kilépett"; return 1 }
   # Teljes atvetel: az ujraindulas legyen lathatatlan.
   CLAUDE_AGENT_RESUME_MODE=full auto_dismiss_modals "$sess"
   print -r -- "$sid"
@@ -1320,7 +1320,7 @@ continue_agent() {                   # $1 = id, $2 = normalizált kérés JSON
   # feladatot, es 39 percig tetlen maradt.
   # Mostantol a KOZOS, darabolt + atiratbol visszaigazolt kuldes megy.
   local ccwd
-  ccwd=$(tmux display-message -p -t "$sess" '#{pane_current_path}' 2>/dev/null)
+  ccwd=$(tmux display-message -p -t "=$sess:" '#{pane_current_path}' 2>/dev/null)
   [[ -n "$ccwd" ]] || ccwd=$(agent_session_cwd "$name" 2>/dev/null)
   [[ -n "$ccwd" ]] || { print -u2 "nem oldható fel a cwd a folytatáshoz: $name"; return 1 }
   if ! agent_send_prompt "$name" "$task" "$ccwd"; then

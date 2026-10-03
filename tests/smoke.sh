@@ -130,6 +130,23 @@ no_  "elutasítja a mythost (nincs hozzáférés)" agent_model_valid claude-fabl
 no_  "elutasít üres megadást"        agent_model_valid ""
 no_  "elutasít részleges nevet"      agent_model_valid claude-opus
 no_  "a [1m] nem tesz érvényessé rosszat" agent_model_valid 'claude-nincs[1m]'
+# Datumozott alak: a protokoll nem hasznalhat aliast (az sodrodik), es a napra
+# pontos azonositot irja elo. Mintaval megy, nem egyenkent felsorolva.
+yes_ "dátumozott alak érvényes"        agent_model_valid claude-haiku-4-5-20251001
+yes_ "dátumozott + 1M is"              agent_model_valid 'claude-haiku-4-5-20251001[1m]'
+yes_ "dátumozott -vN utótaggal is"     agent_model_valid claude-haiku-4-5-20251001-v1
+yes_ "másik család dátumozott alakja"  agent_model_valid claude-sonnet-4-5-20250929
+# ⚠️ A CSALAD-resz akkor is ismert legyen: a datum nem ad felmentest.
+no_  "ismeretlen család + dátum → nem" agent_model_valid claude-nincs-ilyen-20251001
+no_  "7 jegyű 'dátum' → nem"           agent_model_valid claude-haiku-4-5-2025100
+no_  "9 jegyű 'dátum' → nem"           agent_model_valid claude-haiku-4-5-202510011
+# ⚠️⚠️ A minta EXTENDED_GLOB-ot igenyel, ami NEM alapertelmezes. A fuggveny
+# `setopt localoptions extended_glob`-bal vedi magat; ez az allitas azt meri, hogy
+# a hivo shell beallitasa nem szamit — enelkul ERVENYES azonositot utasitana el.
+is   "extended_glob nélkül is működik" \
+     "$(zsh -c 'unsetopt extended_glob 2>/dev/null; source "'"$ROOT"'/bin/_models.sh"; agent_model_valid claude-haiku-4-5-20251001 && print ok || print nem')" "ok"
+is   "és a hívó beállítását nem írja át" \
+     "$(zsh -c 'unsetopt extended_glob 2>/dev/null; source "'"$ROOT"'/bin/_models.sh"; agent_model_valid opus >/dev/null; [[ -o extended_glob ]] && print atirta || print erintetlen')" "erintetlen"
 
 
 # 3. Ugyanez a drift-osztaly a PERMISSION-listakra. 2026-08-29-ig ez nem volt
@@ -185,7 +202,24 @@ print "\n\033[1mhíd: a tmux-session nevének feloldása\033[0m"
 FAKE_SESSIONS=""
 tmux() {                             # csak a has-session agat utanozzuk
   [[ "$1" == "has-session" ]] || return 1
-  [[ " $FAKE_SESSIONS " == *" $3 "* ]]
+  # ⚠️ A VALODI tmux szemantikaja: a `=nev` PONTOS egyezest ker, a sima `nev`
+  # viszont PREFIXRE is illeszkedik. A korabbi mock a nyers sztringet
+  # hasonlitotta, tehat a prefix-viselkedest egyaltalan nem modellezte — pont azt
+  # nem, ami 2026-10-01-en ot hetre elrejtett egy halott agentet. Egy mock, ami
+  # enyhebb a valosagnal, hamis zoldet termel.
+  local want one
+  want="${3#=}"; want="${want%:}"
+  # ⚠️ zsh: a `=*` minta elejen az `=` EQUALS-EXPANZIOT indit (`=cmd` -> a cmd
+  # utvonala), es az egesz `[[ ]]` elhasal — a fuggveny csendben nem-nullat ad.
+  # Idezojelben az `=` literal.
+  if [[ "$3" == "="* ]]; then
+    [[ " $FAKE_SESSIONS " == *" $want "* ]]
+  else
+    for one in ${=FAKE_SESSIONS}; do
+      [[ "$one" == "$want"* ]] && return 0
+    done
+    return 1
+  fi
 }
 FAKE_SESSIONS="agent-valami valami"
 is   "mindkettő létezik → az agent- előtagos nyer" \
@@ -406,9 +440,15 @@ print "\n\033[1mtmux-cél: PONTOS illesztés (= előtag)\033[0m"
 # kesobbi restore IDEGEN beszelgetest folytatott volna.
 # A tmux `=` elotagja pontos egyezest ker. Ez a teszt azt orzi, hogy egyetlen
 # session-cel se maradjon prefix-erzekeny.
-_unsafe=$(grep -rnE '(has-session|kill-session|list-panes|capture-pane|send-keys)[^#]*-t "[^=]' \
-            "$ROOT"/bin "$ROOT"/claude-agent-spawner 2>/dev/null | grep -cv 'print ')
-is   "nincs prefix-érzékeny tmux-cél a kódban" "$_unsafe" "0"
+# ⚠️ EZ AZ ALLITAS ATIRODOTT 2026-10-03-AN, MERT A HIBA VAKFOLTJAT OSZTOTTA.
+# Elozo alakja: `grep -rnE '…-t "[^=]' | grep -cv 'print '`. A `grep -v 'print '`
+# SOROKAT zart ki — es a nyolc legfontosabb hivas pont olyan soron all, ahol a
+# hivas ES egy kiiras egyutt van (`… && { print -r -- … }`). A teszt igy zold volt,
+# mikozben nyolc cel prefix-erzekeny maradt, kozottuk az `agent_tmux_session`, a
+# KOZPONTI feloldo — ugyanaz, aminek a hibaja ot hetig elrejtett egy halott agentet.
+# Mostantol kulon script nez PER-TALALAT, es a ket celtipust is kulonbozteti.
+is   "nincs prefix-érzékeny tmux-cél (per-találat audit)" \
+     "$(zsh "$ROOT/tests/audit-tmux-targets.sh" "$ROOT" | wc -l | tr -d ' ')" "0"
 # A ket watchdog egeszseg-vizsgalata a legdragabb hely: ott a teves "ep" dontes
 # NEMA — nem naploz semmit, csak kihagyja az agentet.
 yes_ "a gyerek-watchdog pontosan illeszt" \
@@ -569,8 +609,50 @@ yes_ "a ciklus figyeli, hogy él-e még a session" \
      grep -q 'has-session -t "=agent-$NAME" 2>/dev/null; then _died=1' "$ROOT/bin/fork-agent"
 yes_ "halálnál külön ág van, a pane utolsó képével" \
      grep -q 'a session MEGSZŰNT, mielőtt készen állt volna' "$ROOT/bin/fork-agent"
-yes_ "a pane túléli a kilépést (remain-on-exit)" \
-     grep -q 'set-option -t "agent-$NAME" remain-on-exit on' "$ROOT/bin/fork-agent"
+# ⚠️⚠️ EZ AZ ALLITAS MINTAT KERESETT, ES EVEKIG ZOLD VOLT EGY NEM MUKODO
+# FUNKCIORA. A `remain-on-exit` ABLAK-opcio: a `set-option -t "<session>"` valasza
+# `no such window`, amit a `2>/dev/null` elnyelt — a pane tehat SOSEM elte tul a
+# kilepest, miközben a v1.0.1 changelogja ezt allitotta, es ez a teszt igazolta.
+# Mostantol VALODI sessionon merjuk: inditunk egy azonnal meghalo parancsot, es
+# megnezzuk, megmarad-e a session es lathato-e a halal oka.
+if command -v tmux >/dev/null 2>&1; then
+  _rs="proba-remain-$$"
+  if tmux new-session -d -s "$_rs" 2>/dev/null; then
+    tmux set-option -w -t "=$_rs:" remain-on-exit on 2>/dev/null
+    tmux respawn-pane -k -t "=$_rs:" "sh -c 'exit 42'" 2>/dev/null
+    sleep 2
+    yes_ "a pane túléli a kilépést (élesben mérve)" \
+         tmux has-session -t "=$_rs" 2>/dev/null
+    is   "és a halál oka is látszik" \
+         "$(tmux list-panes -t "=$_rs:" -F '#{pane_dead}' 2>/dev/null)" "1"
+    # ⚠️ Es a KONTROLL: `-w` nelkul NEM mukodik. Enelkul a fenti ket allitas akkor
+    # is zold lenne, ha a `-w` feleslegesen van ott.
+    _rs2="proba-regi-$$"
+    tmux new-session -d -s "$_rs2" "sh -c 'exit 42'" 2>/dev/null
+    tmux set-option -t "=$_rs2" remain-on-exit on 2>/dev/null
+    sleep 2
+    no_  "a régi (session-opciós) alak NEM tartja meg" \
+         tmux has-session -t "=$_rs2" 2>/dev/null
+    tmux kill-session -t "=$_rs" 2>/dev/null
+    tmux kill-session -t "=$_rs2" 2>/dev/null
+  else
+    print "  \033[33m⚠\033[0m tmux nem tud sessiont nyitni — a remain-on-exit mérés kimarad"
+    SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 3 ))
+  fi
+else
+  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 3 ))
+fi
+# A kodban a HELYES alak legyen: `-w` es `=nev:`.
+yes_ "a fork-agent ablak-opcióként állítja" \
+     grep -q 'set-option -w -t "=agent-$NAME:" remain-on-exit on' "$ROOT/bin/fork-agent"
+yes_ "a spawner is beállítja" \
+     grep -q 'set-option -w -t "=$tmux_session:" remain-on-exit on' "$ROOT/claude-agent-spawner"
+# ⚠️ A SORREND: ures session -> opcio -> respawn. Enelkul egy 1 mp alatt meghalo
+# gyerek megnyeri a versenyt, es nem marad kepernyo.
+yes_ "a fork a parancsot csak az opció UTÁN indítja" \
+     grep -q 'respawn-pane -k -t "=agent-$NAME:"' "$ROOT/bin/fork-agent"
+yes_ "a spawner is így indít" \
+     grep -q 'respawn-pane -k -t "=$tmux_session:"' "$ROOT/claude-agent-spawner"
 # ⚠️ A Desktop a `spawned`-et sikernek olvassa, ezert a bukas NEM lehet spawned.
 yes_ "a hibaindok a beszédes sorból jön, nem a tail -1-ből" \
      grep -q "grep -m1 -E '\^(fork-agent|spawner|agent-close-tree):'" "$ROOT/bin/_bridge-lib.sh"
@@ -1281,7 +1363,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=314}
+: ${SMOKE_EXPECTED:=329}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

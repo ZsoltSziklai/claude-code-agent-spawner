@@ -5,6 +5,50 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-10-03
+
+### Fixed
+
+- **`remain-on-exit` had never actually worked.** It is a *window* option, so
+  `set-option -t "<session>" remain-on-exit on` answers `no such window` — and
+  `2>/dev/null` swallowed that. The pane therefore never survived the command's
+  exit, although v1.0.1's changelog claimed it did and a test "confirmed" it by
+  matching the source line. The correct form is `set-option -w -t "=<name>:"`;
+  measured, the pane now stays and shows `Pane is dead (status 42, …)`.
+- **…and the order was a race.** `new-session` started the command and only then
+  was the option set, so a child dying inside a second won: the session vanished
+  with the screen. Exactly the fastest failures (bad flag, auth) were the ones we
+  could not explain. Now three steps: empty session → window option →
+  `respawn-pane -k`. The spawner got the same treatment; it had never set the
+  option at all.
+- **Eight tmux targets were still prefix-sensitive**, including
+  `agent_tmux_session` — the *central* resolver. v1.2.0's sweep skipped them
+  because it excluded whole lines containing a `print`, and on those lines the
+  call and the message sit together. The audit now works per match, in its own
+  script (`tests/audit-tmux-targets.sh`), and distinguishes session targets
+  (`=name`) from pane targets (`=name:`).
+- **A spec written while the spawner runs was dropped.** The plist had only
+  `WatchPaths`, and launchd discards those events during a run — the same class as
+  the relay's 2026-08-31 incident. The spawner now also has `StartInterval 20`
+  plus a single-instance lock. Measured: two specs written in the same second both
+  start.
+
+### Added
+
+- **Dated model identifiers**, by pattern: `<whitelisted id>-<YYYYMMDD>[-vN]`,
+  with `[1m]` allowed. A measurement protocol cannot use an alias (it drifts) and
+  often requires the exact dated id. The date part is deliberately **not**
+  verified here — the whitelist exists to catch typos in the *family*, and the CLI
+  is the authority on existence; an invented date passes here and fails at spawn,
+  landing in `failed/`.
+- `claude-sonnet-4-5` joins the list (measured), so its dated form works.
+
+### Changed
+
+- 329 assertions (was 314). Three tests that matched **source patterns** were
+  replaced by functional ones, after a pattern test stayed green for a feature
+  that never worked.
+
 ## [1.3.0] — 2026-10-03
 
 ### Added
@@ -243,6 +287,50 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.4.0] — 2026-10-03
+
+#### Javítva
+
+- **A `remain-on-exit` sosem működött.** *Ablak*-opció, tehát a
+  `set-option -t "<session>" remain-on-exit on` válasza `no such window` — és ezt a
+  `2>/dev/null` elnyelte. A pane tehát soha nem élte túl a parancs kilépését, pedig
+  a v1.0.1 changelogja ezt állította, és egy teszt „igazolta" is, mert a forrásban
+  megtalálta a sort. A helyes alak `set-option -w -t "=<név>:"`; mérve a pane
+  megmarad, és kiírja: `Pane is dead (status 42, …)`.
+- **…és a sorrend versenyhelyzet volt.** A `new-session` elindította a parancsot,
+  és csak utána állt be az opció — egy másodpercen belül meghaló gyerek megnyerte,
+  a session eltűnt a képernyővel. Pont a leggyorsabb bukásokról (rossz flag, auth)
+  nem tudtuk megmondani, miért buktak. Mostantól három lépés: üres session →
+  ablak-opció → `respawn-pane -k`. A spawner ugyanezt kapta; ott eddig egyáltalán
+  nem volt beállítva.
+- **Nyolc tmux-cél még prefix-érzékeny volt**, köztük az `agent_tmux_session` — a
+  *központi* feloldó. A v1.2.0-as söprés azért hagyta ki, mert a `print`-et
+  tartalmazó sorokat egészben kizárta, és ezeken a sorokon a hívás és a kiírás
+  együtt áll. Az ellenőrzés mostantól **per-találat** működik, külön scriptben
+  (`tests/audit-tmux-targets.sh`), és a session-célt (`=név`) a pane-céltól
+  (`=név:`) is megkülönbözteti.
+- **A spawner futása közben kiírt spec elveszett.** A plistjén csak `WatchPaths`
+  volt, a launchd pedig a futás közben érkező ilyen eseményt eldobja — ugyanaz a
+  hibaosztály, mint a relay 2026-08-31-i esete. A spawner mostantól
+  `StartInterval 20`-at és egypéldányos zárat is kap. Mérve: két, ugyanabban a
+  másodpercben kiírt spec mindkettő elindul.
+
+#### Hozzáadva
+
+- **Dátumozott modell-azonosítók**, mintával: `<fehérlistás id>-<YYYYMMDD>[-vN]`,
+  `[1m]`-mel is. Egy mérési protokoll nem használhat aliast (az sodródik), és
+  gyakran a napra pontos azonosítót írja elő. A dátum-részt szándékosan **nem**
+  igazoljuk itt: a fehérlista dolga a *család* elírás-szűrése, a létezés kérdésében
+  a CLI a hatóság — egy kitalált dátum átmegy, és a spawnnál bukik el, a
+  `failed/`-be kerülve.
+- `claude-sonnet-4-5` felvéve (mérve), hogy a dátumozott alakja működjön.
+
+#### Változott
+
+- 329 állítás (eddig 314). Három **forrásmintát** kereső teszt funkcionálisra
+  cserélve — miután egy minta-teszt zöld volt egy olyan funkcióra, ami sosem
+  működött.
 
 ### [1.3.0] — 2026-10-03
 
@@ -485,3 +573,4 @@ jóváhagyással.
 [1.2.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.2.0
 [1.2.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.2.1
 [1.3.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.3.0
+[1.4.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.4.0

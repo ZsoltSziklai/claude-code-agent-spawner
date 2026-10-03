@@ -23,6 +23,7 @@ typeset -ga CLAUDE_AGENT_MODEL_IDS=(
   claude-opus-5-5 claude-sonnet-5-5 claude-fable-5-1       # 2026-10-03, mérve
   claude-opus-5 claude-sonnet-5 claude-fable-5 claude-haiku-4-5
   claude-opus-4-8 claude-opus-4-7
+  claude-sonnet-4-5                                        # 2026-10-03, mérve
 )
 
 # Érvényes-e a modell-megadás? A `[1m]` context-utótagot MINDEN megadáson
@@ -32,9 +33,30 @@ typeset -ga CLAUDE_AGENT_MODEL_IDS=(
 # indokolatlanul szűk volt: a `/fork --model 'opus[1m]'` érvényes kérést utasított
 # el. Ezért a levágás MINDKÉT lista ellenőrzése ELŐTT történik.
 agent_model_valid() {
+  # ⚠️ `localoptions extended_glob`: a lenti datum-minta `(#b)`/`(#c8)` szintaxisa
+  # EXTENDED_GLOB-ot igenyel, ami nem alapertelmezes. Enelkul a minta csendben nem
+  # illeszkedik, es a fuggveny ERVENYES azonositot utasit el — a sajat tesztemben
+  # csak azert mukodott, mert ott kezzel bekapcsoltam. A `localoptions` miatt a
+  # hivo shell beallitasa valtozatlan marad.
+  setopt localoptions extended_glob
   local m="${1-}"
   [[ -n "$m" ]] || return 1
   m="${m%\[1m\]}"
   [[ -n "${CLAUDE_AGENT_MODEL_ALIASES[(r)$m]-}" ]] && return 0
-  [[ -n "${CLAUDE_AGENT_MODEL_IDS[(r)$m]-}" ]]
+  [[ -n "${CLAUDE_AGENT_MODEL_IDS[(r)$m]-}" ]] && return 0
+  # DATUMOZOTT ALAK: <fehérlistás azonosító>-<YYYYMMDD>[-vN]
+  # Egy mero protokoll nem hasznalhat aliast (az sodrodik) es gyakran a napra
+  # pontos azonositot irja elo — pl. `claude-haiku-4-5-20251001`. Enelkul a
+  # fehérlista ervenyes, meresre alkalmas azonositot utasitott el.
+  #
+  # ⚠️ A DATUM-RESZT NEM MI IGAZOLJUK, es ez szandekos: a `claude-opus-5-5-20251001`
+  # (kitalalt datum) a CLI-nel `unrecognized_model` — a fehérlista dolga a
+  # ELIRAS-szures (a CSALAD legyen ismert), a letezes kerdeseben a CLI a hatosag.
+  # Egy kitalalt datum tehat atmegy itt, es a spawnnal bukik el, a `failed/`-be
+  # kerulve. Ezt vallaljuk: a masik iranyban (egyenkenti felsorolas) minden uj
+  # datumnal kodot kellene irni, es a protokoll addig all.
+  if [[ "$m" == (#b)(*)-([0-9](#c8))(|-v[0-9]##) ]]; then
+    [[ -n "${CLAUDE_AGENT_MODEL_IDS[(r)${match[1]}]-}" ]] && return 0
+  fi
+  return 1
 }
