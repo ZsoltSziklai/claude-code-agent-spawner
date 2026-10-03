@@ -368,7 +368,7 @@ phone before pressing.
 **4. Fork under it** — from a parent's session:
 
 ```bash
-~/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> [--cwd …] [<prompt>]
+/Users/<you>/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> [--cwd …] [<prompt>]
 ```
 
 `agent-exp-fork` only ever forks under an authorisation: without a valid, approved id
@@ -376,6 +376,34 @@ it does nothing, and the caller cannot pass its own `--grant` or `--requested-by
 That is what makes it safe to take **this one command** out of the sandbox
 (`sandbox.excludedCommands`) on a fixed, installed path — taking `fork-agent` itself
 out would let any agent fork unsandboxed and ungated by omitting a flag.
+
+To let a sandboxed parent run it, the settings need **two** entries — exclusion and
+permission are separate decisions (an excluded command still goes through the normal
+permission flow, so a `dontAsk` parent would refuse it without the allow rule):
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "excludedCommands": ["/Users/<you>/.claude/agent-queue/bin/agent-exp-fork *"]
+  },
+  "permissions": {
+    "allow": ["Bash(/Users/<you>/.claude/agent-queue/bin/agent-exp-fork *)"]
+  }
+}
+```
+
+⚠️ **Spell the path out in full, and call it exactly that way.** Matching is done on
+the *text* of the call: a pattern for `/Users/<you>/…/agent-exp-fork` does not match a
+call written as `~/.claude/…/agent-exp-fork`, and a bare `agent-exp-fork *` pattern
+matches nothing here, because the command is not on the agent's `PATH`. The trailing
+` *` is what admits the arguments.
+
+Where it goes: the project settings (`<project>/.claude/settings.local.json`) cover
+parents running in the project root. A parent running in its own worktree may not read
+them — for that, the user settings (`~/.claude/settings.json`) are the
+worktree-independent place. Either way it is one rule on a fixed path, written once,
+not per run.
 
 What the system enforces, on every fork:
 
@@ -855,7 +883,7 @@ meg a csatolmányt.
 **4. Fork alatta** — a szülő sessionjéből:
 
 ```bash
-~/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> [--cwd …] [<prompt>]
+/Users/<you>/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> [--cwd …] [<prompt>]
 ```
 
 Az `agent-exp-fork` kizárólag felhatalmazás alatt forkol: érvényes, jóváhagyott id
@@ -864,6 +892,33 @@ nélkül nem tesz semmit, és a hívó nem adhat meg saját `--grant`-ot vagy
 (`sandbox.excludedCommands`), állandó, telepített útvonalon — a `fork-agent`-et magát
 kivenni azt jelentené, hogy bármelyik agent homokozón kívül, kapu nélkül forkolhatna,
 egyetlen kapcsoló elhagyásával.
+
+Ahhoz, hogy egy homokozóban futó szülő kiadhassa, **két** bejegyzés kell — a kizárás és
+az engedély külön döntés (a kizárt parancs is a szokásos engedélyezésen megy át, tehát
+egy `dontAsk` módú szülő az engedélyező szabály nélkül elutasítaná):
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "excludedCommands": ["/Users/<te>/.claude/agent-queue/bin/agent-exp-fork *"]
+  },
+  "permissions": {
+    "allow": ["Bash(/Users/<te>/.claude/agent-queue/bin/agent-exp-fork *)"]
+  }
+}
+```
+
+⚠️ **Az útvonalat teljesen ki kell írni, és pontosan így kell hívni.** Az illesztés a
+hívás *szövegére* megy: a `/Users/<te>/…/agent-exp-fork` minta nem illeszkedik egy
+`~/.claude/…/agent-exp-fork` alakban írt hívásra, a csupasz `agent-exp-fork *` minta
+pedig itt semmire, mert a parancs nincs az agent `PATH`-ján. A záró ` *` engedi át az
+argumentumokat.
+
+Hova kerül: a projekt-beállítás (`<projekt>/.claude/settings.local.json`) a projekt
+gyökerében futó szülőkre hat. A saját worktree-jében futó szülő azt nem feltétlenül
+olvassa — arra a felhasználói beállítás (`~/.claude/settings.json`) a worktree-független
+hely. Így is, úgy is egyetlen szabály, állandó útvonalon, egyszer — nem futásonként.
 
 Amit a rendszer minden forknál kikényszerít:
 
