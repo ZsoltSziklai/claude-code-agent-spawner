@@ -188,7 +188,7 @@ characters, `A-Za-z0-9._-` only (it has to fit in a Telegram button).
 | `agent` | one of the two | continuation — an existing agent's exact name |
 | `task` | **yes** | max 8 KB (bytes, not characters — accented text counts double); write it for someone who cannot see this conversation |
 | `worktree` | no | **default `true`**; set `false` only if the task needs the parent's uncommitted work |
-| `model` | no | **default `opus`**. An alias (`opus` / `sonnet` / `haiku` / `fable`) always means the *latest* model of that family, so prefer it. Pin an id only when you deliberately want a fixed version: `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7` (optional `[1m]` suffix on the Opus/Sonnet ids) |
+| `model` | no | **default `opus`**. An alias (`opus` / `sonnet` / `haiku` / `fable`) always means the *latest* model of that family, so prefer it. Pin an id only when you deliberately want a fixed version: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7` (optional `[1m]` suffix on any of them, aliases included) |
 | `effort` | no | `low` … `max` |
 | `permission_mode` | no | **default `auto`**. Also `acceptEdits`, `plan`, `dontAsk`, `manual`, `bypassPermissions` — see the note below before asking for the last one |
 | `resume` | no | fork only. **default `full`** — the child inherits the parent's *entire* conversation. `summary` starts it from a compacted context: much faster to the first turn, but it sees less. See below |

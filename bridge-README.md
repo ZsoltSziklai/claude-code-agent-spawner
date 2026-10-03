@@ -148,7 +148,7 @@ into the Telegram button data as well.
 | `agent` | one of the two | a continuation — the exact name of an existing agent |
 | `task` | **yes** | the child's job, at most 8 KB (bytes, not characters — accented text counts double) |
 | `worktree` | no | **`true` by default**; `false` only if you need the parent's uncommitted work |
-| `model` | no | `opus`/`sonnet`/`haiku`/`fable`, or a pinned id: `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7` (the `[1m]` suffix on the Opus/Sonnet ids) |
+| `model` | no | `opus`/`sonnet`/`haiku`/`fable`, or a pinned id: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7`. The `[1m]` context suffix works on **any** of them, aliases included (`opus[1m]`). The list lives in one place, `bin/_models.sh`. |
 | `effort` | no | `low`…`max` |
 | `cwd` | no | may be relative to `cwd_root` |
 
@@ -553,7 +553,7 @@ a Telegram gomb-adatába is.
 | `agent` | a kettő egyike | folytatás — egy létező agent pontos neve |
 | `task` | **igen** | a gyerek feladata, max 8 KB (bájt, nem karakter — az ékezetes szöveg duplán számít) |
 | `worktree` | nem | **alapból `true`**; `false` csak ha a szülő nem commitolt munkája kell |
-| `model` | nem | `opus`/`sonnet`/`haiku`/`fable`, vagy pinned id: `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7` (`[1m]` utótag az Opus/Sonnet azonosítókon) |
+| `model` | nem | `opus`/`sonnet`/`haiku`/`fable`, vagy rögzített id: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7`. A `[1m]` context-utótag **mindegyiken** működik, az aliasokon is (`opus[1m]`). A lista egy helyen él: `bin/_models.sh`. |
 | `effort` | nem | `low`…`max` |
 | `cwd` | nem | a `cwd_root`-hoz képest relatív is lehet |
 

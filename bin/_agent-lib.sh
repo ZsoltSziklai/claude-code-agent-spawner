@@ -4,6 +4,8 @@
 # All public functions echo to stdout, return 0 on success.
 
 # Config defaults — env-overridable (set in plist or shell)
+source "$(dirname "${(%):-%x}")/_models.sh"   # modell-fehérlista, EGY forrás
+
 : ${ROOT_AGENT_NAME:=mac-main}
 : ${CLAUDE_AGENT_ROOT:=$HOME/ClaudeProjects}
 : ${CLAUDE_AGENT_QUEUE:=$HOME/.claude/agent-queue}

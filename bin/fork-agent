@@ -102,15 +102,8 @@ case "$PERM" in
 esac
 
 case "$EFFORT" in low|medium|high|xhigh|max) ;; *) die "érvénytelen effort: $EFFORT";; esac
-case "$MODEL" in
-  # ⚠️ A harom validator (spawner, hid, fork-agent) LISTAJANAK EGYEZNIE KELL.
-  # 2026-08-26: csak a spawner kapta meg a Claude 5 csaladot, igy egy hid-keres
-  # vagy /fork a TENYLEGESEN hasznalt `claude-opus-5`-tel elutasitasra kerult.
-  opus|sonnet|haiku|fable) ;;
-  claude-opus-4-7|claude-opus-4-8|'claude-opus-4-7[1m]'|'claude-opus-4-8[1m]') ;;
-  claude-opus-5|claude-sonnet-5|claude-fable-5|claude-haiku-4-5|'claude-opus-5[1m]'|'claude-sonnet-5[1m]') ;;
-  *) die "érvénytelen model: $MODEL";;
-esac
+  # EGY FORRAS: a lista a `bin/_models.sh`-ban el (lasd ott a miert-et).
+  agent_model_valid "$MODEL" || die "érvénytelen model: $MODEL"
 
 # ---------------------------------------------------------------------------
 # Név — a szülő prefixével, hogy a list_descendants() kaszkádja elérje

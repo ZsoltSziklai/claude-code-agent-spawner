@@ -161,14 +161,16 @@ Két chat-question egymás után (NE picker).
 **Verzió:**
 
 > *"Melyik verzió?
-> 1. Opus 5 (legújabb)
-> 2. Opus 4.8
-> 3. Opus 4.7"*
+> 1. Opus 5.5 (legújabb)
+> 2. Opus 5
+> 3. Opus 4.8
+> 4. Opus 4.7"*
 
 - **üres** → `opus` — az alias mindig a LEGFRISSEBB Opust jelenti (a CLI súgója szerint), ezért nem avul el
-- **`1` / `5`** → `claude-opus-5` (rögzített azonosító, ha szándékosan verziót akarsz kötni)
-- **`2` / `4.8`** → `claude-opus-4-8`
-- **`3` / `4.7`** → `claude-opus-4-7`
+- **`1` / `5.5`** → `claude-opus-5-5` (rögzített azonosító, ha szándékosan verziót akarsz kötni)
+- **`2` / `5`** → `claude-opus-5`
+- **`3` / `4.8`** → `claude-opus-4-8`
+- **`4` / `4.7`** → `claude-opus-4-7`
 - **Bármi egyéb** → chat-ben kérdezz vissza
 
 **Context window:**
@@ -181,7 +183,7 @@ Két chat-question egymás után (NE picker).
 - **`2` / `1m` / `1M`** → tedd a `[1m]` suffixet a model string végére
 - **Bármi egyéb** → chat-ben kérdezz vissza
 
-A `<MODEL>` érték a JSON-ban az összevont string lesz, pl. `claude-opus-5`, `claude-opus-5[1m]`, `claude-opus-4-8`, vagy `claude-opus-4-7[1m]`. A `[1m]` utótag csak az Opus 4-7/4-8, az Opus 5 és a Sonnet 5 azonosítón érvényes.
+A `<MODEL>` érték a JSON-ban az összevont string lesz, pl. `claude-opus-5-5`, `claude-opus-5-5[1m]`, `claude-opus-4-8`, vagy `opus[1m]`. A `[1m]` utótag **minden** megadáson érvényes, az aliasokon is (2026-10-03-án mind a 13 kombináció lemérve).
 
 ### 4b. Worktree
 

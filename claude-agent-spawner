@@ -16,6 +16,8 @@ export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PA
 unset CLAUDE_CODE_OAUTH_TOKEN
 
 QUEUE_DIR="$CLAUDE_AGENT_QUEUE"
+# A modell-fehérlista EGY forrásból (bin/_models.sh) — lásd ott, miért.
+source "$QUEUE_DIR/bin/_models.sh"
 NEW_DIR="$QUEUE_DIR/new"
 PROC_DIR="$QUEUE_DIR/processing"
 DONE_DIR="$QUEUE_DIR/done"
@@ -152,16 +154,10 @@ for spec in "$NEW_DIR"/*.json; do
     fi
   fi
   cwd="$abs_cwd"   # downstream konzisztencia kedvéért
-  case "$model" in
-    opus|sonnet|haiku|fable) ;;
-    claude-opus-4-7|claude-opus-4-8|'claude-opus-4-7[1m]'|'claude-opus-4-8[1m]') ;;
-    # Claude 5 csalad. A `live/` nyilvantartasbol futo agentek nem esnek at ezen
-    # az ellenorzesen, ezert eddig eszrevetlen maradt, hogy egy UJ spec
-    # `claude-opus-5`-tel elbukott volna — a gyerekek spec-jeben mar az van.
-    claude-opus-5|claude-sonnet-5|claude-fable-5|claude-haiku-4-5) ;;
-    'claude-opus-5[1m]'|'claude-sonnet-5[1m]') ;;
-    *) fail_spec "$proc_path" "$uuid" "invalid model: $model"; continue;;
-  esac
+  # EGY FORRAS: a lista a `bin/_models.sh`-ban el (lasd ott a miert-et).
+  if ! agent_model_valid "$model"; then
+    fail_spec "$proc_path" "$uuid" "invalid model: $model"; continue
+  fi
   case "$effort" in
     low|medium|high|xhigh|max) ;;
     *) fail_spec "$proc_path" "$uuid" "invalid effort: $effort"; continue;;

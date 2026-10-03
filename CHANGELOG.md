@@ -5,6 +5,41 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-10-03
+
+### Added
+
+- **The new models are accepted**: `claude-opus-5-5`, `claude-sonnet-5-5`,
+  `claude-fable-5-1`. Each one was **probed against the CLI**
+  (`claude --model <id> --print 'ok'`) rather than copied out of the binary's
+  `strings` — that also lists ids the account cannot reach
+  (`claude-fable-5-mythos-5` answered `unrecognized_model`).
+- **The `[1m]` context suffix now works on every form, aliases included.** It used
+  to be allowed only on the pinned Opus/Sonnet ids, so `--model 'opus[1m]'` or
+  `claude-haiku-4-5[1m]` were rejected although the CLI accepts them — all 13
+  combinations were measured.
+
+### Changed
+
+- **The model whitelist lives in one place.** It used to be three separate `case`
+  blocks (spawner, bridge, `fork-agent`) with a comment saying they must move
+  together. The comment did not prevent the drift: it happened three times, and
+  on 2026-08-26 only the spawner got the Claude 5 family, so a bridge request or
+  a `/fork` with the id actually in use was rejected. The list and the validator
+  (`agent_model_valid`) now live in `bin/_models.sh`, and all three call it.
+- Two test groups were rewritten. The old ones asserted that the **three** lists
+  were identical — that is, they protected the three-copy structure that kept
+  drifting. The new ones assert that no validator has a list of its own, that all
+  three call the shared function, and that the function itself behaves correctly.
+- 314 assertions in the smoke test (was 285).
+
+### Verified live
+
+A throwaway agent was spawned with `claude-opus-5-5[1m]` through the real queue;
+it came up and reported *"Claude Opus 5.5 vagyok (1M kontextus,
+claude-opus-5-5[1m])"*, with `Opus 5.5 (1M context)` in its status line. Then it
+was killed and cleaned up.
+
 ## [1.2.1] — 2026-10-02
 
 ### Fixed
@@ -208,6 +243,42 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.3.0] — 2026-10-03
+
+#### Hozzáadva
+
+- **Az új modellek elfogadottak**: `claude-opus-5-5`, `claude-sonnet-5-5`,
+  `claude-fable-5-1`. Mindegyiket **lemértük a CLI-vel**
+  (`claude --model <id> --print 'ok'`), nem a bináris `strings`-jéből vettük — ott
+  olyan azonosító is van, amihez a fiók nem fér hozzá (a
+  `claude-fable-5-mythos-5` `unrecognized_model`-lel válaszolt).
+- **A `[1m]` context-utótag mostantól minden megadáson működik, az aliasokon is.**
+  Eddig csak a rögzített Opus/Sonnet azonosítókon volt engedve, tehát a
+  `--model 'opus[1m]'` és a `claude-haiku-4-5[1m]` elutasításra került, pedig a
+  CLI elfogadja — mind a 13 kombináció lemérve.
+
+#### Változott
+
+- **A modell-fehérlista egy helyen él.** Eddig három külön `case`-blokk volt
+  (spawner, híd, `fork-agent`), egy kommenttel, hogy együtt kell mozogniuk. A
+  komment nem akadályozta meg a szétcsúszást: háromszor megtörtént, és
+  2026-08-26-án csak a spawner kapta meg a Claude 5 családot, ezért egy híd-kérés
+  vagy `/fork` a tényleg használt azonosítóval elutasításra került. A lista és a
+  validátor (`agent_model_valid`) mostantól a `bin/_models.sh`-ban van, és
+  mindhárom azt hívja.
+- Két teszt-csoport átíródott. A régiek azt állították, hogy a **három** lista
+  azonos — vagyis azt a háromszoros szerkezetet védték, ami folyton szétcsúszott.
+  Az újak azt mérik, hogy egyik validátornak sincs saját listája, hogy mindhárom a
+  közös függvényt hívja, és hogy a függvény viselkedése helyes.
+- 314 állítás a füst-tesztben (eddig 285).
+
+#### Élesben igazolva
+
+Egy eldobható agentet indítottunk `claude-opus-5-5[1m]`-mel a valódi sorból; felállt,
+és azt jelentette magáról: *„Claude Opus 5.5 vagyok (1M kontextus,
+claude-opus-5-5[1m])"*, a státuszsorában `Opus 5.5 (1M context)`. Utána kilőve és
+eltakarítva.
 
 ### [1.2.1] — 2026-10-02
 
@@ -413,3 +484,4 @@ jóváhagyással.
 [1.1.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.1.0
 [1.2.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.2.0
 [1.2.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.2.1
+[1.3.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.3.0
