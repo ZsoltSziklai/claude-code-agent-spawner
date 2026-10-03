@@ -5,6 +5,56 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-10-03
+
+### Added
+
+- **Experiment authorisation — many forks under one approval.** A requester states
+  the whole package in one bridge request (`action: "experiment"`): which parents
+  (exact names), how many forks, for how many hours, how many in parallel, which
+  model. The user approves or rejects it with **one** button; every parameter is on
+  the button message. Afterwards `fork-agent --grant <id>` forks without a button
+  press — but only within the approved frame, and **the system** enforces it:
+  matching parent, model and `--no-ask`, remaining count, expiry, the parallel cap.
+  It exists because the alternative was to leave `--requested-by` off for 290 forks —
+  i.e. to bypass the gate — so the measurement would have run with nobody having
+  approved anything. Telegram reports at 25/50/75/100 % and on expiry, each with a
+  **Stop** button; a sanity ceiling in `bridge-allow.json` (`experiment.*`, default
+  500 forks / 24 h / 10 parallel) keeps a mistyped request off the phone. Even with
+  `gate: "audit"` an experiment request needs the button: in audit mode everything
+  else runs at once, but one approval here multiplies into hundreds of forks.
+- **`bin/agent-exp-fork`** — forks *only* under an authorisation and refuses a
+  caller-supplied `--grant`/`--requested-by`. Without a valid approved id it does
+  nothing, which makes it safe to take **this one command** out of the sandbox on a
+  fixed installed path. Taking `fork-agent` out instead would let any agent fork
+  unsandboxed and ungated by omitting a flag.
+- **`bin/agent-grant-export`** — the authorisation's full record as JSON: who approved
+  what and when, the limits, what was used, and every fork that started under it. For
+  the replication package: "who authorised what for whom" answered by a data file.
+
+### Fixed
+
+- **`fork-agent --requested-by` had always failed.** It wrote its request to
+  `$CLAUDE_AGENT_QUEUE/bridge/requests`, while the bridge reads from `$BRIDGE_DIR`
+  (`$CLAUDE_AGENT_ROOT/bridge` by default) — and `~/.claude/agent-queue/bridge` does
+  not exist. Every gated fork since v1.0.0 died with "no bridge queue"; `fork.log`
+  holds not a single `GATED` line. The test had built **the same wrong layout**, so it
+  confirmed the writer instead of checking that the reader finds the request. The
+  writer now uses the reader's variable, and the test derives the path from the bridge
+  library.
+- **Three Telegram strings were still Hungarian-only** (`Elindítsam?`, the request
+  caption, the audit "started" line). v1.1.0's check only looked at
+  `tg_send_message`/`tg_edit_message`/`notify` calls and missed `tg_send_document` and
+  assignments. They are in the catalogue now.
+- `tg_edit_message` takes an optional `reply_markup`, so a rewritten message can carry
+  a new button (the experiment's Stop) instead of always losing its buttons.
+
+### Changed
+
+- 386 assertions in the smoke test (was 329). The experiment tests use real throwaway
+  tmux sessions for parents and children, and one test runs **six claims at once**
+  against `parallel=2` to show the lock holds — exactly two succeed.
+
 ## [1.4.0] — 2026-10-03
 
 ### Fixed
@@ -287,6 +337,58 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.5.0] — 2026-10-03
+
+#### Hozzáadva
+
+- **Kísérlet-felhatalmazás — sok fork egy jóváhagyással.** A kérvényező egyetlen
+  híd-kérésben adja meg a teljes csomagot (`action: "experiment"`): mely szülőkből
+  (pontos névvel), hány forkot, hány órán át, hányat párhuzamosan, milyen modellel. A
+  felhasználó **egy** gombbal jóváhagyja vagy elutasítja; minden paraméter a gombos
+  üzeneten van. Utána a `fork-agent --grant <id>` gombnyomás nélkül forkol — de csak a
+  jóváhagyott kereten belül, és ezt **a rendszer** kényszeríti ki: egyező szülő,
+  modell és `--no-ask`, maradék darabszám, lejárat, párhuzamos keret. Azért kell, mert
+  a másik út a `--requested-by` elhagyása lett volna 290 forkra — vagyis a kapu
+  megkerülése —, és a mérés úgy futott volna, hogy senki nem hagyott jóvá semmit.
+  Telegram 25/50/75/100 %-nál és lejáratkor szól, mindegyiken **Leállítás** gombbal; a
+  `bridge-allow.json` józansági plafonja (`experiment.*`, alapból 500 fork / 24 óra /
+  10 párhuzamos) egy elgépelt kérést a telefontól is távol tart. A kísérlet-kérés
+  `gate: "audit"` mellett is gombot kér: audit módban minden más azonnal fut, de egy
+  itteni jóváhagyás akár több száz forkká sokszorozódik.
+- **`bin/agent-exp-fork`** — *kizárólag* felhatalmazás alatt forkol, és elutasítja a
+  hívó saját `--grant`/`--requested-by` kapcsolóját. Érvényes, jóváhagyott id nélkül
+  nem tesz semmit, ezért biztonságos **ezt az egy parancsot** kivenni a homokozóból,
+  állandó, telepített útvonalon. A `fork-agent`-et kivenni azt jelentené, hogy
+  bármelyik agent homokozón kívül, kapu nélkül forkolhatna egy kapcsoló elhagyásával.
+- **`bin/agent-grant-export`** — a felhatalmazás teljes rekordja JSON-ban: ki mit és
+  mikor hagyott jóvá, a korlátok, mennyi fogyott el, és minden fork, ami alatta indult.
+  A replikációs csomagnak: a „ki mit engedélyezett kinek" kérdésre adatfájl felel.
+
+#### Javítva
+
+- **A `fork-agent --requested-by` mindig elbukott.** A kérést a
+  `$CLAUDE_AGENT_QUEUE/bridge/requests`-be írta, a híd viszont a `$BRIDGE_DIR`-ből olvas
+  (alapból `$CLAUDE_AGENT_ROOT/bridge`) — és a `~/.claude/agent-queue/bridge` nem is
+  létezik. v1.0.0 óta minden kapuzott fork „nincs híd-sor"-ral halt meg; a `fork.log`-ban
+  egyetlen `GATED` sor sincs. A teszt **ugyanazt a rossz szerkezetet** építette fel,
+  vagyis az írót igazolta, nem azt, hogy az olvasó megtalálja-e a kérést. Az író
+  mostantól az olvasó változóját használja, a teszt pedig a híd-könyvtárból számolja az
+  útvonalat.
+- **Három Telegram-szöveg még csak magyarul volt** (`Elindítsam?`, a kérés felirata, az
+  audit „elindult" sora). A v1.1.0-s ellenőrzés csak a
+  `tg_send_message`/`tg_edit_message`/`notify` hívásokat nézte, a `tg_send_document`-et
+  és az értékadásokat nem. Mostantól a katalógusban vannak.
+- A `tg_edit_message` opcionális `reply_markup`-ot is átvesz, így egy átírt üzenet új
+  gombot kaphat (a kísérlet Leállítás gombját), ahelyett hogy mindig elveszítené a
+  gombjait.
+
+#### Változott
+
+- 386 állítás a füst-tesztben (eddig 329). A kísérlet-tesztek valódi, eldobható
+  tmux-sessionöket használnak a szülőkre és a gyerekekre, és egy teszt **hat
+  foglalást indít egyszerre** `parallel=2` mellett, hogy megmutassa: a zár tart —
+  pontosan kettő sikerül.
 
 ### [1.4.0] — 2026-10-03
 
@@ -574,3 +676,4 @@ jóváhagyással.
 [1.2.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.2.1
 [1.3.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.3.0
 [1.4.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.4.0
+[1.5.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.0

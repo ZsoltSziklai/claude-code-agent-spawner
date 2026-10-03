@@ -61,6 +61,10 @@ bridge_publish_results
 # hasznalatkor is ellenorizzuk), hanem hogy az allapotfajl ne hizzon.
 bridge_grant_prune
 
+# Kiserlet-felhatalmazasok: merfoldkovek (25/50/75/100%) es lejarat. Forkonkent
+# NEM szolunk — 290 uzenet zaj lenne; ez a negy plusz a lejarat eleg a kepbe.
+xgrant_tick
+
 # Takaritas: kezzel lezart agentek utan maradt szemet (turelmi idovel).
 bridge_gc_spawned
 
@@ -150,7 +154,7 @@ if [[ -d "$TESTCB_DIR" ]]; then
     rm -f "$_f"
     [[ -n "$_d" ]] || continue
     _act="${_d%%:*}"; _rid="${_d#*:}"
-    if [[ "$_act" != (ok|no|g1|g8|gd|rv|nu|s8|sd|sw|qa|qn) ]]; then
+    if [[ "$_act" != (ok|no|g1|g8|gd|rv|nu|s8|sd|sw|qa|qn|xs) ]]; then
       blog "SYNTHETIC-DENY ismeretlen action: $_d"
       continue
     fi
@@ -295,6 +299,24 @@ while read -r u; do
     continue
   fi
 
+  # --- kiserlet leallitasa ----------------------------------------------------
+  # A `pending` OR ELE kerul, ugyanazert, mint a visszavonas: a gomb a
+  # felhatalmazast ado keres id-jet viszi, az pedig mar `spawned`.
+  if [[ "$action" == "xs" ]]; then
+    if xr=$(xgrant_get "$id"); then
+      xgrant_stop "$id"
+      tg_answer_callback "$cbid" "$(t cb.xstopped)" >/dev/null 2>&1
+      _xm="$(t m.xstopped "$id" "$(print -r -- "$xr" | jq -r .used)" "$(print -r -- "$xr" | jq -r .forks)")"
+      tg_edit_message "$cqmid" "$_xm" || tg_send_message "$_xm" >/dev/null 2>&1
+      blog "XGRANT-STOPPED $id"
+    else
+      tg_answer_callback "$cbid" "$(t cb.xnotfound)" >/dev/null 2>&1
+      tg_clear_markup "$cqmid" >/dev/null 2>&1
+      blog "XGRANT-STOP-NOOP $id"
+    fi
+    continue
+  fi
+
   if [[ "$action" == "rv" ]]; then
     if ag=$(bridge_grant_revoke_by_req "$id"); then
       tg_answer_callback "$cbid" "$(t cb.revoked)" >/dev/null 2>&1
@@ -416,10 +438,20 @@ while read -r u; do
             blog "GRANT-FAILED $id"
           fi
         fi
-        tg_answer_callback "$cbid" "$(t cb.started)${glab:+ (+$glab)}" >/dev/null 2>&1
-        tg_edit_message "$cqmid" "$(t m.startedshort "$id")${glab:+  ·  ⏱ +$glab}" >/dev/null 2>&1
-        bridge_forget_msg "$id"
-        tg_send_message "$(t m.startedfull "$id")"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | head -5)</pre>"$'\n'"$(t m.attachline) <code>$(attach_hint "$BRIDGE_LAST_NAME")</code>$gnote" >/dev/null 2>&1
+        if [[ "$(print -r -- "$req" | jq -r '.mode // "fork"')" == "experiment" ]]; then
+          # Kiserletnel nincs agent, amihez csatlakozni lehetne — a felhatalmazas
+          # a termek. A leallito gomb itt is ott van, nem csak a merfoldkoveknel.
+          tg_answer_callback "$cbid" "$(t cb.started)" >/dev/null 2>&1
+          _xk=$(jq -nc --arg i "$id" --arg s "$(t btn.xstop)" '{inline_keyboard:[[{text:$s,callback_data:("xs:" + $i)}]]}')
+          tg_edit_message "$cqmid" "$(t m.xapproved "$id")"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | head -2)</pre>" "$_xk" >/dev/null 2>&1 \
+            || tg_send_message "$(t m.xapproved "$id")" "$_xk" >/dev/null 2>&1
+          bridge_forget_msg "$id"
+        else
+          tg_answer_callback "$cbid" "$(t cb.started)${glab:+ (+$glab)}" >/dev/null 2>&1
+          tg_edit_message "$cqmid" "$(t m.startedshort "$id")${glab:+  ·  ⏱ +$glab}" >/dev/null 2>&1
+          bridge_forget_msg "$id"
+          tg_send_message "$(t m.startedfull "$id")"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | head -5)</pre>"$'\n'"$(t m.attachline) <code>$(attach_hint "$BRIDGE_LAST_NAME")</code>$gnote" >/dev/null 2>&1
+        fi
         blog "SPAWNED $id"
       else
         tg_answer_callback "$cbid" "$(t cb.failed)" >/dev/null 2>&1
