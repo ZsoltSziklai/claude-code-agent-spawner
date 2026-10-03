@@ -459,7 +459,17 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
 
   # --- fork-agent --grant
   jq '.xgrants.xg1.used = 0 | .xgrants.xg1.children = []' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
-  mkdir -p "$XG/home" "$XG/proj"
+  mkdir -p "$XG/home/.local/bin" "$XG/proj"
+  # ⚠️ CSONK `claude` es `tmux` — ugyanazert, mint a fenti fork-teszteknel: egy
+  # mutacioval kiiktatott or mellett a fork VEGIGMENNE, es csonk nelkul ELO Claude
+  # sessiont inditana (2026-08-30-an ketszer megtortent). Az elso valtozatom ezt
+  # kihagyta: helyben a VALODI claude-ot es tmux-ot hasznalta, a CI-ben pedig
+  # (ahol nincs claude) a fork-agent mar a 37. sorban meghalt — a tesztek
+  # "rossz okbol" voltak zoldek, illetve pirosak.
+  ln -sf "$(command -v jq)" "$XG/home/.local/bin/jq"
+  for _b in tmux claude; do
+    print '#!/bin/sh\nexit 1' > "$XG/home/.local/bin/$_b"; chmod +x "$XG/home/.local/bin/$_b"
+  done
   _fg() { env HOME="$XG/home" CLAUDE_CODE_SESSION_ID=teszt-sid CLAUDE_AGENT_NAME="$1" \
             CLAUDE_AGENT_QUEUE="$XG/q" FORK_TREE="$XG/q/fork-tree.json" CLAUDE_AGENT_ROOT="$XG/proj" \
             BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" BRIDGE_DIR="$XG/bridge" \
@@ -468,8 +478,14 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
   # ⚠️ A KILEPESI CSAPDA: a foglalas a cwd-ellenorzes ELOTT tortenik; ha utana barmi
   # elbukik, a helyet vissza kell adni, kulonben a felhatalmazas elbukott
   # inditasokra fogyna el. A nem letezo cwd ezt meri — valodi agent nem indul.
-  _fg "$XPA" xgfork --grant xg1 --cwd nincs-ilyen >/dev/null
-  is   "elbukott fork után a hely visszajár" "$(_xq '.xgrants.xg1.used')" "0"
+  # ⚠️ KET allitas EGYUTT bizonyit: (1) a fork a cwd-ig jutott — a foglalas a
+  # cwd-ellenorzes ELOTT van, tehat MEGTORTENT; (2) utana a szamlalo ujra 0 — tehat
+  # a csapda VISSZAADTA. A (2) onmagaban akkor is zold lenne, ha a foglalas meg sem
+  # tortenik (az elso valtozat igy volt gyenge: a CI-ben a fork-agent mar a 37.
+  # sorban meghalt, es ez az allitas megis zold maradt).
+  _xo=$(_fg "$XPA" xgfork --grant xg1 --cwd nincs-ilyen)
+  is   "a felhatalmazott fork a foglaláson túljutott" "$(print -r -- "$_xo" | grep -c 'a cwd nem létezik')" "1"
+  is   "és elbukott fork után a hely visszajár" "$(_xq '.xgrants.xg1.used')" "0"
   yes_ "idegen szülőből a felhatalmazás nem enged" \
        eval '_fg mac-main-idegen-xg xgfork --grant xg1 --cwd nincs-ilyen | grep -q "nincs a felhatalmazásban"'
   yes_ "nem létező felhatalmazás → hiba" \
@@ -541,7 +557,7 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
   rm -rf "$XG"; trap 'rm -rf "$TMP"' EXIT
 else
   print "  \033[33m⚠\033[0m tmux nincs — a kísérlet-felhatalmazás tesztjei kimaradnak"
-  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 56 ))
+  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 57 ))
 fi
 
 print "\n\033[1mkézbesítés-ellenőrzés: üres bizonyíték ≠ siker\033[0m"
@@ -1564,7 +1580,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=386}
+: ${SMOKE_EXPECTED:=387}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

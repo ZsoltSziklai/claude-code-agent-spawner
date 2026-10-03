@@ -51,7 +51,7 @@ version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Changed
 
-- 386 assertions in the smoke test (was 329). The experiment tests use real throwaway
+- 387 assertions in the smoke test (was 329). The experiment tests use real throwaway
   tmux sessions for parents and children, and one test runs **six claims at once**
   against `parallel=2` to show the lock holds — exactly two succeed.
 
@@ -385,7 +385,7 @@ követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.
 
 #### Változott
 
-- 386 állítás a füst-tesztben (eddig 329). A kísérlet-tesztek valódi, eldobható
+- 387 állítás a füst-tesztben (eddig 329). A kísérlet-tesztek valódi, eldobható
   tmux-sessionöket használnak a szülőkre és a gyerekekre, és egy teszt **hat
   foglalást indít egyszerre** `parallel=2` mellett, hogy megmutassa: a zár tart —
   pontosan kettő sikerül.
