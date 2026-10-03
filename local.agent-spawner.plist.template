@@ -18,6 +18,17 @@
     <key>RunAtLoad</key>
     <false/>
 
+    <!-- ⚠️ A `WatchPaths` ONMAGABAN NEM ELEG. A launchd a futas kozben erkezo
+         WatchPaths-esemenyt NEM allitja sorba: eldobja. 2026-10-03-an emiatt
+         maradt ki egy 2 masodperccel kesobb kiirt spec — a `new/` kezi
+         `touch`-olasa inditotta el. Ugyanaz a hibaosztaly, amit a relay
+         2026-08-31-en kapott; ott a `StartInterval` volt a megoldas, es a
+         spawnernel is az. A kihagyott kor igy ingyen van (a spec a `new/`-ben
+         marad), a parhuzamos futas viszont nem — ezert a script
+         egypeldanyos lockot is kap. -->
+    <key>StartInterval</key>
+    <integer>20</integer>
+
     <key>ThrottleInterval</key>
     <integer>1</integer>
 

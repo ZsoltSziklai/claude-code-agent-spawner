@@ -210,8 +210,8 @@ remove_worktree() {
 #   kiirja a LETEZO session nevet, vagy 1-gyel ter vissza
 agent_tmux_session() {               # $1 = agent nev
   local n="$1"
-  tmux has-session -t "agent-$n" 2>/dev/null && { print -r -- "agent-$n"; return 0 }
-  tmux has-session -t "$n"       2>/dev/null && { print -r -- "$n";       return 0 }
+  tmux has-session -t "=agent-$n" 2>/dev/null && { print -r -- "agent-$n"; return 0 }
+  tmux has-session -t "=$n"       2>/dev/null && { print -r -- "$n";       return 0 }
   return 1
 }
 

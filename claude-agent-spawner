@@ -16,6 +16,24 @@ export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PA
 unset CLAUDE_CODE_OAUTH_TOKEN
 
 QUEUE_DIR="$CLAUDE_AGENT_QUEUE"
+
+# ⚠️ EGYPELDANYOS FUTAS. A plist mostantol `StartInterval`-t is kap (lasd ott, miert),
+# tehat a WatchPaths-trigger es a periodikus indulas atfedhet. Ket parhuzamos
+# spawner ugyanazt a specet is elkaphatna: az atomi `mv new/ -> processing/` ezt
+# megfogja, de ket peldany ketszer vegezne el a 3-5 masodperces smoke-varakozast,
+# es a logrotalas is osszeirhatna. Atomi mkdir-lock, mert macOS-en nincs flock(1);
+# elarvult lock felismerese a rogzitett pid-del, ahogy a pollerben.
+SPAWNER_LOCK="$QUEUE_DIR/spawner.lock"
+if ! mkdir "$SPAWNER_LOCK" 2>/dev/null; then
+  _lpid=$(cat "$SPAWNER_LOCK/pid" 2>/dev/null)
+  if [[ -n "$_lpid" ]] && kill -0 "$_lpid" 2>/dev/null; then
+    exit 0                             # tenyleg fut egy masik peldany
+  fi
+  rm -rf "$SPAWNER_LOCK"
+  mkdir "$SPAWNER_LOCK" 2>/dev/null || exit 0
+fi
+print -r -- "$$" > "$SPAWNER_LOCK/pid"
+trap 'rm -rf "$SPAWNER_LOCK"' EXIT INT TERM
 # A modell-fehérlista EGY forrásból (bin/_models.sh) — lásd ott, miért.
 source "$QUEUE_DIR/bin/_models.sh"
 NEW_DIR="$QUEUE_DIR/new"
@@ -266,8 +284,18 @@ Elutasítás esetén semmi nem indul."
   done
   shell_cmd+=" ${(qq)prompt}"
 
-  if ! "$TMUX_BIN" new-session -d -s "$tmux_session" "$shell_cmd"; then
+  # ⚠️ HAROM lepes, ugyanazert, mint a fork-agent-ben: ures session -> ablak-opcio
+  # -> es csak azutan indul a parancs. Enelkul egy 1 mp alatt meghalo agent
+  # megnyeri a versenyt, a session megszunik, es a bukas oka elveszik — pont a
+  # leggyorsabb bukasokrol (rossz flag, auth) nem tudjuk megmondani, miert buktak.
+  if ! "$TMUX_BIN" new-session -d -s "$tmux_session" 2>/dev/null; then
     fail_spec "$proc_path" "$uuid" "tmux new-session failed"
+    continue
+  fi
+  "$TMUX_BIN" set-option -w -t "=$tmux_session:" remain-on-exit on 2>/dev/null
+  if ! "$TMUX_BIN" respawn-pane -k -t "=$tmux_session:" "$shell_cmd" 2>/dev/null; then
+    "$TMUX_BIN" kill-session -t "=$tmux_session" 2>/dev/null
+    fail_spec "$proc_path" "$uuid" "tmux respawn-pane failed"
     continue
   fi
 

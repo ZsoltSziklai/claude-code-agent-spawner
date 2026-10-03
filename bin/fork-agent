@@ -350,16 +350,39 @@ for a in "${cmd_args[@]}"; do shell_cmd+=" ${(qq)a}"; done
 # beragadt agentnek send-keys-szel elkuldve ugyanazt a szoveget, azonnal dolgozni
 # kezdett. A promptot ezert a session felallasa UTAN kuldjuk be (lasd lentebb).
 
-if ! "$TMUX_BIN" new-session -d -s "agent-$NAME" "$shell_cmd"; then
+# ⚠️ A pane elje tul a parancs kilepeset, kulonben a HALAL OKA elvesz: a tmux
+# alapbol megszunteti a sessiont, es vele az utolso kepernyot is. 2026-09-12-en
+# emiatt nem lehetett megmondani, miert halt meg ket fork.
+#
+# ⚠️⚠️ ES A SORREND SEM MINDEGY. Eddig a `new-session` INDITOTTA a parancsot, es a
+# `remain-on-exit` csak UTANA kerult be — ez verseny: egy 1 masodperc alatt
+# meghalo gyerek megnyeri, a session megszunik, es nem marad kepernyo. Pont a
+# leggyorsabb bukasokrol (rossz flag, auth) nem tudtuk megmondani, miert buktak;
+# a 2026-10-03-i kiserletben ez tette diagnosztizalhatatlanna a "fork 5 mp-en
+# belul kilepett" hibat.
+# Ezert HAROM lepes: ures session -> opcio -> es csak azutan indul a parancs.
+# A `respawn-pane -k` ugyanabban a pane-ben inditja, tehat a session-nev, a
+# worktree es a fork-fa valtozatlan.
+if ! "$TMUX_BIN" new-session -d -s "agent-$NAME" 2>/dev/null; then
   rm -f "$SPEC"
   $WANT_WT && remove_worktree "$CWD" "$RUN_CWD" "worktree-$NAME"
   die "tmux new-session sikertelen"
 fi
-
-# ⚠️ A pane elje tul a parancs kilepeset, kulonben a HALAL OKA elvesz: a tmux
-# alapbol megszunteti a sessiont, es vele az utolso kepernyot is. 2026-09-12-en
-# emiatt nem lehetett megmondani, miert halt meg ket fork.
-"$TMUX_BIN" set-option -t "agent-$NAME" remain-on-exit on 2>/dev/null
+# ⚠️⚠️ `-w` ES `=nev:` KELL. A `remain-on-exit` ABLAK-opcio, nem session-opcio:
+# a `set-option -t "=agent-X"` valasza `no such window: =agent-X`, es ezt a
+# `2>/dev/null` elnyelte — vagyis a beallitas SOSEM ervenyesult, miközben a v1.0.1
+# changelogja azt allitotta, hogy a pane tulel. Merve 2026-10-03-an: `-w` nelkul a
+# session a parancs kilepesekor eltunik, `-w` + `=nev:` alakkal viszont megmarad,
+# es a pane kiirja a halal okat is: "Pane is dead (status 42, ...)".
+if ! "$TMUX_BIN" set-option -w -t "=agent-$NAME:" remain-on-exit on 2>/dev/null; then
+  print -u2 "figyelem: a remain-on-exit nem allt be — egy azonnali bukas oka elveszhet"
+fi
+if ! "$TMUX_BIN" respawn-pane -k -t "=agent-$NAME:" "$shell_cmd" 2>/dev/null; then
+  "$TMUX_BIN" kill-session -t "=agent-$NAME" 2>/dev/null
+  rm -f "$SPEC"
+  $WANT_WT && remove_worktree "$CWD" "$RUN_CWD" "worktree-$NAME"
+  die "tmux respawn-pane sikertelen"
+fi
 sleep 5
 if ! "$TMUX_BIN" has-session -t "=agent-$NAME" 2>/dev/null; then
   rm -f "$SPEC"

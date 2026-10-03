@@ -32,7 +32,7 @@ ME="${CLAUDE_AGENT_NAME:-}"
 
 SESS=$(agent_tmux_session "$TARGET") || die "nincs ilyen futó agent: $TARGET"
 
-CWD=$(tmux display-message -p -t "$SESS" '#{pane_current_path}' 2>/dev/null)
+CWD=$(tmux display-message -p -t "=$SESS:" '#{pane_current_path}' 2>/dev/null)
 [[ -n "$CWD" ]] || CWD=$(agent_session_cwd "$TARGET" 2>/dev/null) || die "nem oldható fel a cwd: $TARGET"
 
 if agent_send_prompt "$TARGET" "$TEXT" "$CWD"; then
