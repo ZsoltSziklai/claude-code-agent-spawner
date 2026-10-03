@@ -107,7 +107,12 @@ for f in "$REQ_DIR"/*.json; do
   sum="$REQ_DIR/$id.summary.txt"
   summary_text "$id" "$req" > "$sum"
 
-  if [[ "$GATE" == "audit" ]]; then
+  # ⚠️ A KISERLET-FELHATALMAZAS AUDIT MODBAN IS GOMBOT KER. Audit modban minden
+  # keres azonnal fut, es utolag szolunk — egy felhatalmazas viszont MEGSOKSZOROZODIK
+  # (egy jovahagyas = akar szazakat inditó, allo engedely). Ennel a felhasznalo
+  # kifejezetten azt kerte, hogy O hagyja jova; ezt egy globalis kapcsolo nem irhatja felul.
+  _mode0=$(print -r -- "$req" | jq -r '.mode // "fork"')
+  if [[ "$GATE" == "audit" && "$_mode0" != "experiment" ]]; then
     # Audit-ág: indul, és utólag szólunk.
     # ⚠️ Ugyanaz a versenyhelyzet, mint a felhatalmazásos ágon: a relay
     # WatchPaths-triggerelt és nincs rajta a poller egypéldányos lockja, ezért a
@@ -117,7 +122,7 @@ for f in "$REQ_DIR"/*.json; do
     # `auto`-ra fokozza vissza (lasd _bridge-lib.sh: spawn_from_request).
     BRIDGE_APPROVAL=audit
     if run_request "$id" "$req"; then
-      $DRY_RUN || { tg_ready && tg_send_document "$sum" "▶️ Elindult: <code>$id</code>" >/dev/null 2>&1 }
+      $DRY_RUN || { tg_ready && tg_send_document "$sum" "$(t m.auditstarted "$id")" >/dev/null 2>&1 }
       print "elindítva (audit): $id"
     else
       notify "$(t m.failedshort "$id")"
@@ -166,7 +171,15 @@ for f in "$REQ_DIR"/*.json; do
   # Az idoablakos gombok a `close`-on NEM jelennek meg: a lezaras kaszkadol,
   # agat es worktree-t torol, visszafordithatatlan — arra allando jovahagyas
   # nem adhato. A prefixek rovidek, mert a callback_data 64 bajt (id max 48).
-  if [[ "$mode" == "close" ]]; then
+  if [[ "$mode" == "experiment" ]]; then
+    # Kiserlet: igen vagy nem, a teljes csomagra. Nincs idoablak-gomb (a
+    # felhatalmazas sajat lejaratot hordoz), es a szamokat sem irja felul senki:
+    # a kervenyezo adja meg, a felhasznalo az egeszrol dont.
+    markup=$(jq -nc --arg id "$id" \
+        --arg sOk "$(t btn.xapprove)" --arg sReject "$(t btn.reject)" \
+      '{inline_keyboard:[[{text:$sOk,callback_data:("ok:" + $id)},
+                          {text:$sReject,callback_data:("no:" + $id)}]]}')
+  elif [[ "$mode" == "close" ]]; then
     markup=$(jq -nc --arg id "$id" \
         --arg sIndit "$(t btn.start)" --arg sReject "$(t btn.reject)" \
       '{inline_keyboard:[[{text:$sIndit,callback_data:("ok:" + $id)},
@@ -185,12 +198,31 @@ for f in "$REQ_DIR"/*.json; do
     print "  [dry-run] jóváhagyásra várna: $id"
     print "  [dry-run] összefoglaló: $sum"
   elif tg_ready; then
-    tg_send_document "$sum" "🤖 <b>Agent-indítási kérés</b> — <code>$id</code>" >/dev/null 2>&1
+    # ⚠️ A FELIRAT a kerés FAJTAJAT nevezze meg. Kiserletnel eddig is
+    # "Agent-inditasi keres" allt rajta, szamok nelkul (2026-10-03, eles proba) —
+    # holott nem indul agent, es a dontes a szamokrol szol.
+    if [[ "$mode" == "experiment" ]]; then
+      tg_send_document "$sum" "$(t m.xcaption "$id" \
+        "$(print -r -- "$req" | jq -r .forks)" "$(print -r -- "$req" | jq -r .hours)" \
+        "$(print -r -- "$req" | jq -r .parallel)")" >/dev/null 2>&1
+    else
+      tg_send_document "$sum" "$(t m.reqcaption "$id")" >/dev/null 2>&1
+    fi
     # A message_id-t eltesszuk: LEJARATKOR ebbol tudjuk levenni a gombokat
     # (ott nincs gombnyomas, amibol kiolvashatnank).
     # A figyelmeztetes a GOMBOS uzenetre kerul, nem (csak) a csatolmanyba: amit a
     # csatolmany megnyitasa nelkul nem latsz, az nem tolti be a szerepet.
-    btn="Elindítsam? <code>$id</code>"
+    if [[ "$mode" == "experiment" ]]; then
+      # ⚠️ MINDEN parameter a gombos uzeneten: errol szol a dontes, es a
+      # csatolmanyt a telefonon senki nem nyitja meg gombnyomas elott.
+      _x() { print -r -- "$req" | jq -r "$1" }
+      if [[ "$(_x .no_ask)" == true ]]; then _xna="$(t m.xnoask_on)"; else _xna="$(t m.xnoask_off)"; fi
+      btn="$(t m.xask "$id" "$(_x .requested_by)" "$(_x '.parents | join(", ")')" \
+              "$(_x .forks)" "$(_x .hours)" "$(_x .parallel)" "$(_x .model)" "$_xna" \
+              "$(_x '.purpose // ""')")"
+    else
+      btn="$(t m.askstart "$id")"
+    fi
     warn=$(bridge_button_warning "$req")
     [[ -n "$warn" ]] && btn="$warn"$'\n\n'"$btn"
     # ⚠️ A GOMBOS UZENET SZOVEGET LEMEZRE IS KIIRJUK. Eddig a "megjelent-e a

@@ -358,6 +358,246 @@ is   "a pozicionális prompt eldobva"  "$(restart_argv "$_B" S | grep -c 'Ez-egy
 _C='/Users/x/.local/bin/claude --remote-control a --worktree=a --brief'
 is   "a --worktree eldobva"           "$(restart_argv "$_C" S | grep -c 'worktree')" "0"
 
+print "\n\033[1mkill-utak: a fork-fát is takarítják\033[0m"
+# ⚠️ 2026-10-03: a `kill-one` (es a ra epulo `kill-tree`) nem vette ki a gyereket a
+# fork-fabol — egy eles proba utan egy halott fork ott maradt. Funkcionalisan merjuk,
+# izolalt fajlokkal, csonk tmux-szal (valodi session nem halhat meg).
+_KT=$(mktemp -d); mkdir -p "$_KT/live" "$_KT/bin"
+print '#!/bin/sh\nexit 0' > "$_KT/bin/tmux"; chmod +x "$_KT/bin/tmux"
+print '{"kt-gyerek-x":"kt-szulo","kt-masik":"kt-szulo"}' > "$_KT/tree.json"
+env PATH="$_KT/bin:$PATH" FORK_TREE="$_KT/tree.json" CLAUDE_AGENT_LIVE="$_KT/live" CLAUDE_AGENT_QUEUE="$_KT" \
+    zsh "$ROOT/bin/agent-kill-one.sh" kt-gyerek-x >/dev/null 2>&1
+is   "a kill-one kiveszi a fork-fából"    "$(jq -r '."kt-gyerek-x" // "nincs"' "$_KT/tree.json")" "nincs"
+is   "a többi bejegyzéshez nem nyúl"      "$(jq -r '."kt-masik" // "nincs"' "$_KT/tree.json")" "kt-szulo"
+rm -rf "$_KT"
+# A kill-all MINDEN agent-* sessiont kiloine — tesztben NEM futtathato. Ott a forrast nezzuk.
+yes_ "a kill-all is üríti a fork-fát" grep -q "print '{}' > \"\$FORK_TREE\"" "$ROOT/bin/agent-kill-all.sh"
+
+print "\n\033[1mkísérlet-felhatalmazás (xgrant)\033[0m"
+# Izolalt vilag: sajat allapot, sajat config, sajat tmux-sessionok a szulokre es a
+# gyerekekre. Az eles ~/.claude-hoz nem nyul.
+if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'sleep 1' 2>/dev/null; then
+  tmux kill-session -t "=xg-probe-$$" 2>/dev/null
+  XG=$(mktemp -d)
+  XPA="mac-main-xgpa-$$"; XPB="mac-main-xgpb-$$"
+  # ⚠️ A TAKARITAS A KILEPESI CSAPDABA kerul, nem a szakasz vegere: ha a suite
+  # kozben megszakad (egy `set -u` elegendo), a vegen allo kill nem fut le, es
+  # eldobhato sessionok maradnak a gepen. Az elso valtozatban pontosan igy lett.
+  trap 'rm -rf "$TMP" "$XG"; for _s in "agent-$XPA" "agent-$XPB" "agent-$XPA-k3"; do tmux kill-session -t "=$_s" 2>/dev/null; done' EXIT
+  tmux new-session -d -s "agent-$XPA" 'sleep 600'
+  tmux new-session -d -s "agent-$XPB" 'sleep 600'
+  print '{"user_id":1,"parents":["mac-main"],"experiment":{"max_forks":50,"max_hours":12,"max_parallel":4}}' > "$XG/allow.json"
+  _xenv() { env BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" BRIDGE_DIR="$XG/bridge" \
+              CLAUDE_AGENT_QUEUE="$XG/q" BRIDGE_LOG="$XG/bridge.log" "$@" }
+  mkdir -p "$XG/q" "$XG/bridge/requests"
+  _xreq() {                          # $1 = jq-modositas a jo keresen -> validate kilepes + kimenet
+    jq -n --arg a "$XPA" --arg b "$XPB" \
+      '{action:"experiment", requested_by:"mac-main-vegrehajto", parents:[$a,$b], forks:20,
+        hours:2, parallel:2, model:"claude-haiku-4-5-20251001", no_ask:true, purpose:"proba"}' \
+      | jq "$1" > "$XG/r.json"
+    _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; validate_request "'"$XG"'/r.json"' 2>&1
+  }
+  is   "érvényes kísérlet-kérés → mode=experiment" "$(_xreq . | jq -r .mode 2>/dev/null)" "experiment"
+  # A hamis irany: minden parameter KULON, kulonben egy mindig-igaz validator is zold lenne.
+  no_  "forks=0 elutasítva"               eval '_xreq ".forks=0" | jq -e .mode >/dev/null 2>&1'
+  no_  "a plafon feletti forks elutasítva" eval '_xreq ".forks=51" | jq -e .mode >/dev/null 2>&1'
+  yes_ "és a plafon NEVE is ott van a hibában" eval '_xreq ".forks=51" | grep -q "experiment.max_forks"'
+  no_  "a plafon feletti hours elutasítva" eval '_xreq ".hours=13" | jq -e .mode >/dev/null 2>&1'
+  no_  "parallel > forks elutasítva"       eval '_xreq ".forks=3|.parallel=4" | jq -e .mode >/dev/null 2>&1'
+  no_  "modell nélkül elutasítva"          eval '_xreq "del(.model)" | jq -e .mode >/dev/null 2>&1'
+  no_  "bypassPermissions elutasítva"      eval '_xreq ".permission_mode=\"bypassPermissions\"" | jq -e .mode >/dev/null 2>&1'
+  no_  "nem futó szülő elutasítva"         eval '_xreq ".parents=[\"mac-main-nincs-ilyen-xg\"]" | jq -e .mode >/dev/null 2>&1'
+  no_  "a gyökér nem lehet szülő"          eval '_xreq ".parents=[\"mac-main\"]" | jq -e .mode >/dev/null 2>&1'
+  no_  "requested_by nélkül elutasítva"    eval '_xreq "del(.requested_by)" | jq -e .mode >/dev/null 2>&1'
+  # ⚠️ A PREFIX NEM AD FELMENTEST: a `mac-main-xgpa-$$` futo session PREFIXE nem
+  # szulo. A prefix-illesztes ezen a heten tobbszor rossz agentet talalt meg.
+  # ⚠️ A prefixnek EGYERTELMUNEK kell lennie. Az elso valtozat `mac-main-xgp`-t
+  # hasznalt, ami KET sessionre is illeszkedett (xgpa, xgpb) — es ketertelmu prefixre
+  # a tmux maga ad hibat. A mutacios proba (prefix-illesztesre visszaallitott ellenorzes)
+  # igy at sem ment a teszten: a ketertelmuseg eltakarta a hibat. Ez a prefix csak
+  # EGY futo sessionre illeszkedik.
+  no_  "egy futó agent PREFIXE nem szülő"  eval '_xreq ".parents=[\"mac-main-xgpa\"]" | jq -e .mode >/dev/null 2>&1'
+
+  # --- a felhatalmazas letrejotte es a helyfoglalas
+  _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"
+    req=$(validate_request "'"$XG"'/r.json" 2>/dev/null) || exit 1
+    xgrant_from_request xg1 "$req" >/dev/null' 2>/dev/null
+  _xq() { jq -r "$1" "$XG/state.json" 2>/dev/null }
+  _xc() { _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_claim "$@"' _ "$@" >/dev/null 2>&1; print $? }
+  # (az utolso _xreq a requested_by NELKULI keres volt -> ujra a jot irjuk ki)
+  _xreq . >/dev/null
+  _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"
+    req=$(validate_request "'"$XG"'/r.json") && xgrant_from_request xg1 "$req" >/dev/null' 2>/dev/null
+  is   "a felhatalmazás létrejött, 0 felhasználva"   "$(_xq '.xgrants.xg1.used')" "0"
+  is   "a lejárat a jövőben van"  "$(( $(_xq '.xgrants.xg1.until') > $(date -u +%s) ))" "1"
+  is   "jó szülő + modell → foglalás sikerül"  "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto "$XPA-k1")" "0"
+  is   "és a számláló nő"                      "$(_xq '.xgrants.xg1.used')" "1"
+  is   "idegen szülő → nem"     "$(_xc xg1 mac-main-mas claude-haiku-4-5-20251001 true auto k)" "1"
+  is   "eltérő modell → nem"    "$(_xc xg1 "$XPA" claude-opus-5-5 true auto k)" "1"
+  is   "eltérő --no-ask → nem"  "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 false auto k)" "1"
+  is   "emelt jogosultság → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true bypassPermissions k)" "1"
+  is   "a hibás kísérletek nem fogyasztanak" "$(_xq '.xgrants.xg1.used')" "1"
+  # ⚠️ A PARHUZAMOS KERET a meg EL NEM INDULT gyereket is szamolja: a foglalas es a
+  # session felallasa kozott masodpercek telnek el, es ket gyors fork kulonben
+  # mindketto szabadnak latna ugyanazt a helyet.
+  is   "2. foglalás (parallel=2) sikerül"    "$(_xc xg1 "$XPB" claude-haiku-4-5-20251001 true auto "$XPB-k2")" "0"
+  is   "a 3. — két még el sem indult gyerek mellett — VÁRJ (75)" \
+       "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto "$XPA-k3")" "75"
+  # A fuggo hely lejar -> felszabadul (a fork kozben elhalt, csapda nelkul).
+  is   "a lejárt függő foglalás felszabadul" \
+       "$(env XGRANT_PENDING_SEC=0 BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_claim xg1 "'"$XPA"'" claude-haiku-4-5-20251001 true auto "'"$XPA"'-k3" >/dev/null 2>&1; print $?')" "0"
+  # Az ELO session viszont lejarat utan is foglal.
+  tmux new-session -d -s "agent-$XPA-k3" 'sleep 600'
+  is   "az élő gyerek lejárat után is foglal" \
+       "$(env XGRANT_PENDING_SEC=0 BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_claim xg1 "'"$XPA"'" claude-haiku-4-5-20251001 true auto "'"$XPA"'-k4" >/dev/null 2>&1; print $?')" "0"
+  tmux kill-session -t "=agent-$XPA-k3" 2>/dev/null
+  _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_release xg1 "'"$XPA"'-k4"' >/dev/null 2>&1
+  is   "a visszaadott hely csökkenti a számlálót" "$(_xq '.xgrants.xg1.used')" "3"
+  is   "és kikerül a gyerekek közül" "$(_xq '[.xgrants.xg1.children[].name] | index("'"$XPA"'-k4")')" "null"
+  # Leallitas, kifogyas, lejarat
+  jq '.xgrants.xg1.stopped = true' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  is   "leállított felhatalmazás → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto kx)" "1"
+  jq '.xgrants.xg1.stopped = false | .xgrants.xg1.used = 20' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  is   "elfogyott felhatalmazás → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto kx)" "1"
+  jq '.xgrants.xg1.used = 0 | .xgrants.xg1.until = 1' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  is   "lejárt felhatalmazás → nem"   "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto kx)" "1"
+
+  # --- VALODI parhuzamossag a zarra: 6 egyideju foglalas, parallel=2 -> pontosan 2
+  jq '.xgrants.xg1.until = 9999999999 | .xgrants.xg1.used = 0 | .xgrants.xg1.children = []' \
+     "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  for i in 1 2 3 4 5 6; do
+    ( _xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto "$XPA-par$i" > "$XG/par$i" ) &
+  done; wait
+  is   "6 egyidejű foglalásból pontosan 2 sikerül (a zár tart)" \
+       "$(cat "$XG"/par* | grep -cx 0)" "2"
+  is   "és a számláló is pontosan 2" "$(_xq '.xgrants.xg1.used')" "2"
+
+  # --- fork-agent --grant
+  jq '.xgrants.xg1.used = 0 | .xgrants.xg1.children = []' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  mkdir -p "$XG/home/.local/bin" "$XG/proj"
+  # ⚠️ CSONK `claude` es `tmux` — ugyanazert, mint a fenti fork-teszteknel: egy
+  # mutacioval kiiktatott or mellett a fork VEGIGMENNE, es csonk nelkul ELO Claude
+  # sessiont inditana (2026-08-30-an ketszer megtortent). Az elso valtozatom ezt
+  # kihagyta: helyben a VALODI claude-ot es tmux-ot hasznalta, a CI-ben pedig
+  # (ahol nincs claude) a fork-agent mar a 37. sorban meghalt — a tesztek
+  # "rossz okbol" voltak zoldek, illetve pirosak.
+  ln -sf "$(command -v jq)" "$XG/home/.local/bin/jq"
+  for _b in tmux claude; do
+    print '#!/bin/sh\nexit 1' > "$XG/home/.local/bin/$_b"; chmod +x "$XG/home/.local/bin/$_b"
+  done
+  _fg() { env HOME="$XG/home" CLAUDE_CODE_SESSION_ID=teszt-sid CLAUDE_AGENT_NAME="$1" \
+            CLAUDE_AGENT_QUEUE="$XG/q" FORK_TREE="$XG/q/fork-tree.json" CLAUDE_AGENT_ROOT="$XG/proj" \
+            BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" BRIDGE_DIR="$XG/bridge" \
+            zsh "$ROOT/bin/fork-agent" "${@:2}" 2>&1 }
+  print '{}' > "$XG/q/fork-tree.json"; : > "$XG/q/fork.log"
+  # ⚠️ A KILEPESI CSAPDA: a foglalas a cwd-ellenorzes ELOTT tortenik; ha utana barmi
+  # elbukik, a helyet vissza kell adni, kulonben a felhatalmazas elbukott
+  # inditasokra fogyna el. A nem letezo cwd ezt meri — valodi agent nem indul.
+  # ⚠️ KET allitas EGYUTT bizonyit: (1) a fork a cwd-ig jutott — a foglalas a
+  # cwd-ellenorzes ELOTT van, tehat MEGTORTENT; (2) utana a szamlalo ujra 0 — tehat
+  # a csapda VISSZAADTA. A (2) onmagaban akkor is zold lenne, ha a foglalas meg sem
+  # tortenik (az elso valtozat igy volt gyenge: a CI-ben a fork-agent mar a 37.
+  # sorban meghalt, es ez az allitas megis zold maradt).
+  _xo=$(_fg "$XPA" xgfork --grant xg1 --cwd nincs-ilyen)
+  is   "a felhatalmazott fork a foglaláson túljutott" "$(print -r -- "$_xo" | grep -c 'a cwd nem létezik')" "1"
+  is   "és elbukott fork után a hely visszajár" "$(_xq '.xgrants.xg1.used')" "0"
+  yes_ "idegen szülőből a felhatalmazás nem enged" \
+       eval '_fg mac-main-idegen-xg xgfork --grant xg1 --cwd nincs-ilyen | grep -q "nincs a felhatalmazásban"'
+  yes_ "nem létező felhatalmazás → hiba" \
+       eval '_fg "$XPA" xgfork --grant nincs-ilyen-xg --cwd nincs-ilyen | grep -q "nincs ilyen kísérlet-felhatalmazás"'
+  # ⚠️ A SEBESSEGKORLAT: tele a naplo (10 normal fork) -> a normal fork elbukik,
+  # a felhatalmazott viszont tovabbjut (a cwd-n bukik, vagyis az oron at jutott).
+  for i in 1 2 3 4 5 6 7 8 9 10; do print "$(date -u +%Y-%m-%dT%H:%M:%SZ) FORKED p$i from=x" >> "$XG/q/fork.log"; done
+  yes_ "tele naplóval a normál fork sebességkorlátba fut" \
+       eval '_fg "$XPA" xgnorm --cwd nincs-ilyen | grep -q "sebességkorlát"'
+  yes_ "a felhatalmazott fork a sebességkorláton túljut" \
+       eval '_fg "$XPA" xgfork --grant xg1 --cwd nincs-ilyen | grep -q "a cwd nem létezik"'
+  # ...es a felhatalmazott forkok NEM toltik a globalis keretet (kulonben egy futo
+  # kiserlet ~5 oran at minden mas agent forkjat blokkolna).
+  : > "$XG/q/fork.log"
+  for i in 1 2 3 4 5 6 7 8 9 10; do print "$(date -u +%Y-%m-%dT%H:%M:%SZ) FORKED g$i from=x grant=xg1" >> "$XG/q/fork.log"; done
+  yes_ "a felhatalmazott forkok nem töltik a globális sebességkeretet" \
+       eval '_fg "$XPA" xgnorm --cwd nincs-ilyen | grep -q "a cwd nem létezik"'
+
+  # --- agent-exp-fork: CSAK felhatalmazas alatt
+  yes_ "a wrapper azonosító nélkül nem indul" \
+       eval 'zsh "$ROOT/bin/agent-exp-fork" 2>&1 | grep -q "használat"'
+  yes_ "a hívó nem adhat meg --requested-by-t" \
+       eval 'zsh "$ROOT/bin/agent-exp-fork" xg1 suf --requested-by x 2>&1 | grep -q "nem adható meg"'
+  yes_ "a hívó nem adhat meg saját --grant-ot" \
+       eval 'zsh "$ROOT/bin/agent-exp-fork" xg1 suf --grant mas 2>&1 | grep -q "nem adható meg"'
+  yes_ "a wrapper tényleg felhatalmazás alá teszi (ismeretlen id → elutasítás)" \
+       eval 'env CLAUDE_AGENT_NAME="$XPA" BRIDGE_STATE="$XG/state.json" CLAUDE_AGENT_QUEUE="$XG/q" FORK_TREE="$XG/q/fork-tree.json" CLAUDE_AGENT_ROOT="$XG/proj" HOME="$XG/home" CLAUDE_CODE_SESSION_ID=t zsh "$ROOT/bin/agent-exp-fork" nincs-xg suf --cwd nincs-ilyen 2>&1 | grep -q "nincs ilyen kísérlet-felhatalmazás"'
+
+  # --- export a replikacios csomagnak
+  _xex=$(env BRIDGE_STATE="$XG/state.json" CLAUDE_AGENT_QUEUE="$XG/q" zsh "$ROOT/bin/agent-grant-export" xg1 2>/dev/null)
+  is   "az export a felhatalmazást adja"          "$(print -r -- "$_xex" | jq -r .grant.forks)" "20"
+  is   "és a jóváhagyás tényét is"                "$(print -r -- "$_xex" | jq -r '.grant.approved_at > 0')" "true"
+  is   "és az alatta indult forkokat"             "$(print -r -- "$_xex" | jq -r .fork_count)" "10"
+  is   "a forkok szülője is benne van"            "$(print -r -- "$_xex" | jq -r '.forks[0].parent')" "x"
+
+  # --- merfoldkovek: egyszer-egyszer, forkonkent nem
+  jq '.xgrants.xg1.used = 10 | .xgrants.xg1.notified = [] | .xgrants.xg1.until = 9999999999' \
+     "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  : > "$XG/bridge.log"
+  _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_tick' >/dev/null 2>&1
+  is   "50%-nál a 25 és az 50 mérföldkő is rögzül" "$(_xq '.xgrants.xg1.notified | sort | map(tostring) | join(",")')" "25,50"
+  # ⚠️ ...DE CSAK EGY UZENET megy, a TENYLEGES aranyt mutatva. Az eles proban
+  # (2026-10-03) ket uzenet jott egyszerre, es az egyik azt irta: "25% — 1/2 fork".
+  is   "és egy körben csak EGY értesítés megy" "$(grep -c 'XGRANT-MILESTONE xg1' "$XG/bridge.log")" "1"
+  is   "a tényleges arányt mutatja (10/20 = 50%)" "$(grep -c 'XGRANT-MILESTONE xg1 50% (10/20' "$XG/bridge.log")" "1"
+  _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_tick' >/dev/null 2>&1
+  is   "és a második kör nem ismétli"           "$(_xq '.xgrants.xg1.notified | length')" "2"
+  jq '.xgrants.xg1.until = 1' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_tick' >/dev/null 2>&1
+  is   "lejáratkor egyszer szól"                 "$(_xq '.xgrants.xg1.notified | index("exp") != null')" "true"
+
+  # --- AUDIT MODBAN IS GOMB KELL. Audit modban minden keres azonnal fut, de egy
+  # felhatalmazas megsokszorozodik (egy jovahagyas = szazakat indito allo engedely).
+  print '{"user_id":1,"gate":"audit","parents":["mac-main"],"experiment":{"max_forks":50,"max_hours":12,"max_parallel":4}}' > "$XG/allow-audit.json"
+  _xreq . >/dev/null
+  cp "$XG/r.json" "$XG/bridge/requests/xaudit.json"
+  _rout=$(env BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow-audit.json" BRIDGE_DIR="$XG/bridge" \
+            CLAUDE_AGENT_QUEUE="$XG/q" BRIDGE_LOG="$XG/bridge.log" zsh "$ROOT/bin/bridge-relay.sh" --dry-run 2>&1)
+  is   "audit módban a kísérlet is jóváhagyásra vár" "$(print -r -- "$_rout" | grep -c 'jóváhagyásra várna: xaudit')" "1"
+  is   "és nem jön létre felhatalmazás gomb nélkül"  "$(jq -r '.xgrants.xaudit // "nincs"' "$XG/state.json")" "nincs"
+  # A leallito gomb a teszt-csatornan is hasznalhato (a regresszios kor automatizalhato).
+  yes_ "a leállító gomb a teszt-csatornán engedett" grep -q 'qa|qn|xs)' "$ROOT/bin/bridge-poller.sh"
+
+  # --- az eles proba (2026-10-03) harom UX-hibaja
+  # 1) a JOVAHAGYOTT uzenet eltuntette a szamokat (helyben atirodott egy rovidre)
+  _xa=$(env BRIDGE_LANG=hu zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t m.xapproved id kerv "a, b" 290 8 5 modell nem "2026-10-03 21:44"')
+  is   "a jóváhagyott üzenet megtartja a darabszámot" "$(print -r -- "$_xa" | grep -c '290 fork')" "1"
+  is   "és a lejáratot is kiírja"                      "$(print -r -- "$_xa" | grep -c '21:44')" "1"
+  # 2) a csatolmany felirata "Agent-inditasi keres" volt, szamok nelkul
+  _xc=$(env BRIDGE_LANG=hu zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t m.xcaption id 290 8 5')
+  is   "a kísérlet csatolmánya a kísérletet nevezi meg" "$(print -r -- "$_xc" | grep -c 'Kísérlet-felhatalmazás')" "1"
+  is   "és a számokat is mutatja"                       "$(print -r -- "$_xc" | grep -c '290 fork')" "1"
+  yes_ "a relay kísérletnél ezt a feliratot küldi" grep -q 't m.xcaption "$id"' "$ROOT/bin/bridge-relay.sh"
+  # 3) a szulok jovahagyasa nem mondta meg, KI kerte
+  is   "a queue-kapu jóváhagyása kiírja, ki kérte" \
+       "$(env BRIDGE_LANG=hu zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t m.qapproved nev mac-main' | grep -c 'kérte: <code>mac-main')" "1"
+  # ⚠️ ...es a kert-et az ATHELYEZES ELOTT olvassuk: a new/ alol a spawner azonnal elviheti.
+  is   "a kérte-mezőt a gated/ specből olvassa" "$(grep -c '_qrb=$(jq -r .\.requested_by // "?". "$gspec"' "$ROOT/bin/bridge-poller.sh")" "1"
+  # a masodik leallitas mar ne irjon at semmit
+  yes_ "a második leállító nyomás csak jelez" grep -q 'XGRANT-STOP-ALREADY' "$ROOT/bin/bridge-poller.sh"
+
+  # --- a jovahagyo uzenet: MINDEN parameter rajta, mindket nyelven
+  _xm=$(env BRIDGE_LANG=hu zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t m.xask id kervenyezo "a, b" 290 8 5 claude-haiku-4-5 nem cel')
+  # ⚠️ NEM `yes_ … print … | grep`: a cso a yes_-t ALHEJBA viszi, es a szamlaloja
+  # elvesz — az allitas lefut, de nem szamit. (Mar egyszer igy esett ki egy allitas.)
+  is   "a jóváhagyó üzenet kiírja a darabszámot" "$(print -r -- "$_xm" | grep -c '290 fork')" "1"
+  is   "és a párhuzamosságot"  "$(print -r -- "$_xm" | grep -c '5 párhuzamosan')" "1"
+  is   "és az órát"            "$(print -r -- "$_xm" | grep -c '8 óra')" "1"
+  is   "angolul is"            "$(env BRIDGE_LANG=en zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t btn.xapprove')" "✅ Approve"
+
+  tmux kill-session -t "=agent-$XPA" 2>/dev/null; tmux kill-session -t "=agent-$XPB" 2>/dev/null
+  rm -rf "$XG"; trap 'rm -rf "$TMP"' EXIT
+else
+  print "  \033[33m⚠\033[0m tmux nincs — a kísérlet-felhatalmazás tesztjei kimaradnak"
+  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 67 ))
+fi
+
 print "\n\033[1mkézbesítés-ellenőrzés: üres bizonyíték ≠ siker\033[0m"
 # ⚠️⚠️ 2026-10-02: a `find … -print0 | xargs -0 grep -q` pipeline URES find-ra
 # **0-val** lep ki (a BSD xargs el sem inditja a parancsot), tehat a regi
@@ -896,21 +1136,36 @@ yes_ "a lezárás kivezeti a fából" \
      grep -q 'fork_tree_forget "$NAME"' "$ROOT/bin/agent-close-tree.sh"
 
 # --- kapu + sebessegkorlat -------------------------------------------------
-mkdir -p "$FG/bridge/requests"; print '{}' > "$FG/fork-tree.json"; : > "$FG/fork.log"
+print '{}' > "$FG/fork-tree.json"; : > "$FG/fork.log"
+# ⚠️⚠️ AZ OLVASO UTVONALAT A HID-KONYVTARBOL SZAMOLJUK, nem kezzel irjuk be.
+# v1.0.0 ota a `fork-agent` a `$CLAUDE_AGENT_QUEUE/bridge/requests`-be irt, a hid
+# viszont a `$BRIDGE_DIR/requests`-bol olvas — a kapuzott fork elesben MINDIG
+# "nincs híd-sor"-ral halt meg. Ez a teszt pedig `$FG/bridge/requests`-et epitett
+# fel, vagyis PONTOSAN a hibas szerkezetet: az irot igazolta, nem azt, hogy az
+# olvaso megtalalja-e. Mostantol az olvaso (`_bridge-lib.sh` REQ_DIR) a mérce.
+_RQ=$(env CLAUDE_AGENT_QUEUE="$FG" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; print -r -- "$REQ_DIR"')
+mkdir -p "$_RQ"; rm -f "$_RQ"/*.json
 yes_ "az agent-kezdeményezte fork nem indul, hanem sorba kerül" \
      eval '_fork_try "mac-main" "kapu-proba" --requested-by mac-main --cwd nincs-ilyen | grep -q "jóváhagyásra vár"'
 # ⚠️ `jq -e` az URES sztringet is igaznak veszi (csak null/false bukik), ezert a
 # puszta letezes-ellenorzes HAMIS ZOLD volt: az ures requested_by atment rajta.
 # Mutacios probaval derult ki. Az ERTEKET kell nezni, nem a letezest.
-is   "a sorba írt kérés hordozza a requested_by-t" \
-     "$(jq -r '.requested_by' "$FG"/bridge/requests/*.json 2>/dev/null)" "mac-main"
+is   "a kérés OTT van, ahonnan a híd olvas" \
+     "$(jq -r '.requested_by' "$_RQ"/*.json 2>/dev/null)" "mac-main"
+# Es az ELES alapertelmezes: BRIDGE_DIR nelkul a fork-agent oda ir, ahova a hid
+# alapbol nez ($CLAUDE_AGENT_ROOT/bridge). Ez fogta volna meg a v1.0.0-as hibat.
+mkdir -p "$FG/proj/bridge/requests"; rm -f "$FG/proj/bridge/requests"/*.json
+( unset BRIDGE_DIR; _fork_try "mac-main" "kapu-alap" --requested-by mac-main --cwd nincs-ilyen >/dev/null )
+_RQ0=$(env -u BRIDGE_DIR CLAUDE_AGENT_ROOT="$FG/proj" CLAUDE_AGENT_QUEUE="$FG" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; print -r -- "$REQ_DIR"')
+is   "alapértelmezésben is ugyanoda ír, ahonnan a híd olvas" \
+     "$(ls "$_RQ0"/*.json 2>/dev/null | wc -l | tr -d ' ')" "1"
 # ⚠️ SORREND: a fork-bombat el kell UTASITANI, nem jovahagyasra kuldeni. Ha az orok
 # a kapu MOGE kerulnenek, a felhasznalo gombot kapna egy onmasolo forkra.
-rm -f "$FG"/bridge/requests/*.json
+rm -f "$_RQ"/*.json
 yes_ "az önmásoló fork a kapuval együtt is elutasítás" \
      eval '_fork_try "mac-main-x-regG4" "regG4" --requested-by mac-main --cwd nincs-ilyen | grep -q "önmásolás"'
 is   "és nem is kerül a sorba" \
-     "$(ls "$FG"/bridge/requests/*.json 2>/dev/null | wc -l | tr -d ' ')" "0"
+     "$(ls "$_RQ"/*.json 2>/dev/null | wc -l | tr -d ' ')" "0"
 # ⚠️ A kapu ONBEVALLASOS (mint a spawnere). A determinisztikus vedelem EZ:
 for i in 1 2 3 4 5 6 7 8 9 10; do print "$(date -u +%Y-%m-%dT%H:%M:%SZ) FORKED p$i from=x" >> "$FG/fork.log"; done
 yes_ "a sebességkorlát fog" \
@@ -1363,7 +1618,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=329}
+: ${SMOKE_EXPECTED:=400}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

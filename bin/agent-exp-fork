@@ -1,0 +1,28 @@
+#!/usr/bin/env zsh
+# agent-exp-fork — fork KIZAROLAG kiserlet-felhatalmazas alatt.
+#
+#   agent-exp-fork <felhatalmazas-id> <suffix> [fork-agent kapcsolok] [<prompt>]
+#
+# MIERT KULON PARANCS, es miert nem eleg a `fork-agent --grant`:
+# Egy homokozoban futo agent nem eri el a tmux-socketet, ezert a fork-kiado parancsot
+# a homokozobol ki kell venni (`sandbox.excludedCommands`). Ha ezt a `fork-agent`-re
+# tennenk, BARMELYIK agent jovahagyas nelkul forkolhatna a homokozon kivul — eleg
+# elhagynia a `--requested-by`-t, mert a kapu onbevallasos.
+# Ez a parancs viszont MINDIG felhatalmazas alatt indit: felhatalmazas-id nelkul
+# meg sem probalja, es a hivo altal megadott `--grant`/`--requested-by` sem irhatja
+# felul (a sajatunk a parancssor VEGERE kerul, es az utolso nyer). Jovahagyott,
+# ervenyes felhatalmazas nelkul tehat semmit nem tud. Ezert biztonsagos EZT — es
+# csak ezt — a homokozobol kivenni, egy allando, telepitett utvonalon.
+set -u
+die() { print -u2 "agent-exp-fork: $*"; exit 1 }
+HERE="${${(%):-%x}:A:h}"
+[[ $# -ge 2 ]] || die "használat: agent-exp-fork <felhatalmazás-id> <suffix> [kapcsolók] [<prompt>]"
+GRANT="$1"; shift
+[[ "$GRANT" =~ '^[A-Za-z0-9._-]{1,48}$' ]] || die "érvénytelen felhatalmazás-azonosító: $GRANT"
+[[ "$1" != -* ]] || die "az első argumentum a suffix legyen, nem kapcsoló: $1"
+# A hivo nem kerhet mas felhatalmazast, es nem kuldheti a keresét a Telegram-kapura
+# sem (az a `fork-agent` dolga) — itt minden fork a megadott felhatalmazas ala esik.
+for a in "$@"; do
+  case "$a" in --grant|--requested-by) die "a(z) $a itt nem adható meg — a felhatalmazást az első argumentum adja" ;; esac
+done
+exec zsh "$HERE/fork-agent" "$@" --grant "$GRANT"

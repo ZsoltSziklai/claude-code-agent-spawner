@@ -92,6 +92,9 @@ BRIDGE_MSG=(
   btn.grant8h    '⏱ +8 óra|⏱ +8 hours'
   btn.grant1d    '⏱ +1 nap|⏱ +1 day'
   btn.revoke     '🚫 Felhatalmazás visszavonása|🚫 Revoke authorisation'
+  # --- kiserlet-felhatalmazas (xgrant) ---
+  btn.xapprove   '✅ Engedélyezem|✅ Approve'
+  btn.xstop      '🛑 Kísérlet leállítása|🛑 Stop the experiment'
   btn.nudge      '🔔 Emlékeztetem|🔔 Remind it'
   btn.mute8h     '🔕 8 óra|🔕 8 hours'
   btn.mute1d     '🔕 1 nap|🔕 1 day'
@@ -102,6 +105,9 @@ BRIDGE_MSG=(
   cb.failed      'Indítás sikertelen.|Start failed.'
   cb.stale       'Ez a kérés már nem függőben.|This request is no longer pending.'
   cb.revoked     'Visszavonva.|Revoked.'
+  cb.xstopped    'Leállítva — új fork nem indul.|Stopped — no new forks.'
+  cb.xalready    'Már le volt állítva.|It was already stopped.'
+  cb.xnotfound   'Ilyen felhatalmazás nincs (vagy már leállt).|No such authorisation (or it already stopped).'
   cb.notfound    'Nem találom, melyik agentről van szó.|Cannot tell which agent this is.'
   cb.denied      'Nem engedélyezett.|Not allowed.'
   # --- uzenetek ---
@@ -138,6 +144,24 @@ BRIDGE_MSG=(
   m.failedfull   '⚠️ Indítás sikertelen — <code>%s</code>|⚠️ Start failed — <code>%s</code>'
   m.rejectedfull '⛔️ <b>Elutasítva</b> — <code>%s</code>|⛔️ <b>Rejected</b> — <code>%s</code>'
   m.startedshort '▶️ <b>Elindítva</b> — <code>%s</code>|▶️ <b>Started</b> — <code>%s</code>'
+  # Kiserlet-felhatalmazas. A JOVAHAGYO uzenet MINDEN parametert tartalmaz: a
+  # dontes ezekrol szol, es ami csak a csatolmanyban van, azt a telefonon nem latod.
+  m.xask        '🧪 <b>Kísérlet-felhatalmazás</b> — <code>%s</code>\nkérvényező: <code>%s</code>\nszülők: <code>%s</code>\n<b>%s fork</b> · <b>%s óra</b> · <b>%s párhuzamosan</b>\nmodell: <code>%s</code> · visszakérdezés: %s\n%s\nEngedélyezed?|🧪 <b>Experiment authorisation</b> — <code>%s</code>\nrequested by: <code>%s</code>\nparents: <code>%s</code>\n<b>%s forks</b> · <b>%s hours</b> · <b>%s in parallel</b>\nmodel: <code>%s</code> · asking back: %s\n%s\nApprove?'
+  # ⚠️ A JOVAHAGYOTT uzenet MEGTARTJA a parametereket. Az elso valtozat helyben
+  # atirta a gombos uzenetet egy rovid "engedelyezve"-re, es ezzel ELTUNTETTE, mire
+  # mondtal igent — a felhasznalo a chatben mar nem latta a szamokat (2026-10-03).
+  m.xapproved   '✅ <b>Kísérlet engedélyezve</b> — <code>%s</code>\nkérvényező: <code>%s</code>\nszülők: <code>%s</code>\n<b>%s fork</b> · <b>%s óra</b> · <b>%s párhuzamosan</b>\nmodell: <code>%s</code> · visszakérdezés: %s\nlejár: <b>%s</b>|✅ <b>Experiment approved</b> — <code>%s</code>\nrequested by: <code>%s</code>\nparents: <code>%s</code>\n<b>%s forks</b> · <b>%s hours</b> · <b>%s in parallel</b>\nmodel: <code>%s</code> · asking back: %s\nexpires: <b>%s</b>'
+  m.xcaption    '🧪 <b>Kísérlet-felhatalmazás</b> — <code>%s</code> · %s fork · %s óra · %s párhuzamosan|🧪 <b>Experiment authorisation</b> — <code>%s</code> · %s forks · %s hours · %s in parallel'
+  m.xmilestone  '🧪 <code>%s</code>: <b>%s%%</b> — %s/%s fork elindult, most %s fut. Lejár: %s|🧪 <code>%s</code>: <b>%s%%</b> — %s/%s forks started, %s running now. Expires: %s'
+  m.xexpired    '⌛️ <b>Kísérlet-felhatalmazás lejárt</b> — <code>%s</code> (%s/%s fork indult el)|⌛️ <b>Experiment authorisation expired</b> — <code>%s</code> (%s/%s forks started)'
+  m.xstopped    '🛑 <b>Kísérlet leállítva</b> — <code>%s</code>: új fork nem indul (%s/%s indult el). A futók folytatják.|🛑 <b>Experiment stopped</b> — <code>%s</code>: no new forks (%s/%s started). Running ones continue.'
+  m.xnoask_on   'nem (--no-ask)|no (--no-ask)'
+  m.xnoask_off  'igen|yes'
+  # A meglevo, eddig kimaradt szovegek (v1.1.0-ban a grep a tg_send_document-et
+  # es az ertekadasokat nem nezte, ezert maradtak magyarul).
+  m.askstart    'Elindítsam? <code>%s</code>|Start it? <code>%s</code>'
+  m.reqcaption  '🤖 <b>Agent-indítási kérés</b> — <code>%s</code>|🤖 <b>Agent start request</b> — <code>%s</code>'
+  m.auditstarted '▶️ Elindult: <code>%s</code>|▶️ Started: <code>%s</code>'
   m.failedshort  '⚠️ <b>Indítás sikertelen</b> — <code>%s</code>|⚠️ <b>Start failed</b> — <code>%s</code>'
   m.stalefull    '⌛️ <code>%s</code> már nem függőben (<b>%s</b>) — a kérés már elindult, ez a nyomás nem csinált semmit.|⌛️ <code>%s</code> is no longer pending (<b>%s</b>) — the request has already started, this press did nothing.'
   m.revokedfull  '🚫 <b>Felhatalmazás visszavonva</b> — <code>%s</code>|🚫 <b>Authorisation revoked</b> — <code>%s</code>'
@@ -163,7 +187,9 @@ BRIDGE_MSG=(
   m.nudgenote    'Ha döntésre várt, most a jelentésébe fogja írni.|If it was waiting on a decision, it will now write it into its report.'
   m.nudgefail    '⚠️ Az emlékeztetőt nem sikerült elküldeni — az agent már nem fut.|⚠️ Could not send the reminder — the agent is no longer running.'
   m.qrejected    '✖️ <b>Elutasítva</b> — <code>%s</code>|✖️ <b>Rejected</b> — <code>%s</code>'
-  m.qapproved    '▶️ <b>Jóváhagyva, indul</b> — <code>%s</code>|▶️ <b>Approved, starting</b> — <code>%s</code>'
+  # A jovahagyott uzenet mondja meg, KI kerte: kulonben utolag nem derul ki, mire
+  # mondtal igent (2026-10-03: a felhasznalo nem tudta hova tenni a ket "Jóváhagyva"-t).
+  m.qapproved    '▶️ <b>Jóváhagyva, indul</b> — <code>%s</code> · kérte: <code>%s</code>|▶️ <b>Approved, starting</b> — <code>%s</code> · requested by: <code>%s</code>'
   m.grantfail    '⚠️ A felhatalmazást nem sikerült beállítani (nincs cél-agent).|⚠️ Could not set the authorisation (no target agent).'
 )
 
@@ -273,12 +299,21 @@ tg_clear_markup() {                  # $1 = message_id
     | jq -e '.ok == true' >/dev/null 2>&1
 }
 
-tg_edit_message() {                  # $1 = message_id, $2 = uj szoveg
-  local mid="$1" text="$2"
+tg_edit_message() {                  # $1 = message_id, $2 = uj szoveg, [$3 = reply_markup JSON]
+  local mid="$1" text="$2" mk="${3-}"
   [[ -n "$mid" ]] || return 1
-  tg_call editMessageText -d "chat_id=$(tg_chat_id)" -d "message_id=$mid" \
-    -d "parse_mode=HTML" --data-urlencode "text=$text" \
-    | jq -e '.ok == true' >/dev/null 2>&1
+  # A reply_markup ELHAGYASA leveszi a gombokat — ez a szandekos alapeset (a
+  # lezart kereseken ne lehessen ujra nyomni). Ha uj gombot akarunk az atirt
+  # uzenetre (pl. a kiserlet leallito gombja), azt kifejezetten at kell adni.
+  if [[ -n "$mk" ]]; then
+    tg_call editMessageText -d "chat_id=$(tg_chat_id)" -d "message_id=$mid" \
+      -d "parse_mode=HTML" --data-urlencode "text=$text" --data-urlencode "reply_markup=$mk" \
+      | jq -e '.ok == true' >/dev/null 2>&1
+  else
+    tg_call editMessageText -d "chat_id=$(tg_chat_id)" -d "message_id=$mid" \
+      -d "parse_mode=HTML" --data-urlencode "text=$text" \
+      | jq -e '.ok == true' >/dev/null 2>&1
+  fi
 }
 
 # A gombos uzenet azonositoja a keres id-je ala. Csak a LEJARATHOZ kell: ott
@@ -428,6 +463,177 @@ bridge_grant_prune() {
   local now; now=$(date -u +%s)
   state_edit "$BRIDGE_STATE" --argjson n "$now" \
     'if .grants then .grants |= with_entries(select(.value.until > $n)) else . end'
+}
+
+# ============================================================================
+# KISERLET-FELHATALMAZAS (xgrant) — 2026-10-03
+# ============================================================================
+# Egy kerveny (pl. egy merest futtato agent) MEGADJA: mely szulokbol, hany forkot,
+# hany oran at, hanyat parhuzamosan, milyen modellel. A felhasznalo EGY gombbal
+# igent vagy nemet mond. Utana a `fork-agent --grant <id>` gombnyomas nelkul
+# indithat — de csak a jovahagyott kereten belul, es azt a RENDSZER kenyszeriti
+# ki, nem a kervenyezo becsuletszava.
+#
+# Miert kell: 290 fork 290 Telegram-gombnyomas lett volna, ezert a kiserlet a
+# `--requested-by` ELHAGYASAVAL futott volna — vagyis a kapu megkerulesevel. Igy a
+# kapun at megy, egyszer, es a felhatalmazas rekordja (ki, mikor, mire, mennyi fogyott
+# el) a replikacios csomag resze lehet (`agent-grant-export`).
+#
+# Mit NEM valt ki: az onmasolas-ort es a melysegkorlatot. Azok determinisztikus
+# vedelmek, a felhatalmazas csak a KAPUT helyettesiti. A rendszerszintu
+# sebessegkorlatot viszont igen: az a jovahagyatlan, elszabadult forkok ellen van,
+# es ha a kiserlet hasznalna, ~5 oran at MINDEN MAS agent forkja buknak. A
+# felhatalmazas sajat korlatai (osszesen / parhuzamos / lejarat) amugy is szorosabbak.
+
+xgrant_limit() {                     # $1 = max_forks|max_hours|max_parallel
+  local d
+  case "$1" in max_forks) d=500 ;; max_hours) d=24 ;; max_parallel) d=10 ;; *) return 1 ;; esac
+  bridge_cfg ".experiment.$1" "$d"
+}
+
+xgrant_get() {                       # $1 = id -> a rekord JSON-ja
+  [[ -r "$BRIDGE_STATE" ]] || return 1
+  local r; r=$(jq -c --arg i "$1" '(.xgrants // {})[$i] // empty' "$BRIDGE_STATE" 2>/dev/null)
+  [[ -n "$r" ]] || return 1
+  print -r -- "$r"
+}
+
+# Hany gyereke fut EPPEN. A fork-fa nem eleg: a lezart gyerek felszabaditja a
+# helyet, tehat az ELO sessionoket szamoljuk — PONTOS illesztessel (`=`), mert a
+# prefix-illesztes ezen a heten tobbszor rossz agentet talalt meg.
+#
+# ⚠️ ES A MEG EL NEM INDULT GYEREKET IS. A foglalas es a tmux-session felallasa
+# kozott masodpercek telnek el; ha csak az elo sessionoket szamolnank, ket gyors
+# fork ezalatt MINDKETTO szabadnak latna ugyanazt a helyet, es a parhuzamos keret
+# tullepne. Ezert a frissen foglalt gyerek XGRANT_PENDING_SEC-ig akkor is foglal,
+# ha meg nincs sessionje. Ha a fork kozben elhalt (es a csapdaja sem futott le),
+# a hely ennyi ido utan magatol felszabadul.
+: ${XGRANT_PENDING_SEC:=120}
+xgrant_running() {                   # $1 = rekord JSON
+  local name at n=0 now; now=$(date -u +%s)
+  while IFS=$'\t' read -r name at; do
+    [[ -n "$name" ]] || continue
+    if tmux has-session -t "=agent-$name" 2>/dev/null; then (( n++ ))
+    elif (( now - ${at:-0} < XGRANT_PENDING_SEC )); then (( n++ ))
+    fi
+  done < <(print -r -- "$1" | jq -r '.children[]? | [.name, (.at|tostring)] | @tsv' 2>/dev/null)
+  print -r -- "$n"
+}
+
+xgrant_from_request() {              # $1 = id, $2 = normalizalt keres (mode=experiment)
+  local id="$1" req="$2" now until hours
+  now=$(date -u +%s)
+  hours=$(print -r -- "$req" | jq -r '.hours')
+  until=$(( now + hours * 3600 ))
+  state_edit "$BRIDGE_STATE" --arg i "$id" --argjson r "$req" --argjson n "$now" \
+      --argjson u "$until" --arg by "${ALLOWED_USER:-}" \
+    '.xgrants = ((.xgrants // {}) | .[$i] = ($r | del(.mode, .target)
+       + {used:0, until:$u, approved_at:$n, approved_by:$by,
+          children:[], notified:[], stopped:false}))' || return 1
+  blog "XGRANT-SET $id ($(print -r -- "$req" | jq -r '"\(.forks) fork, \(.parallel) parh., \(.hours) ora"'), lejar: $(bridge_grant_human "$until"))"
+  print -r -- "kísérlet-felhatalmazás érvényes: $id — lejár $(bridge_grant_human "$until")"
+}
+
+# A HELYFOGLALAS — atomikusan. Ket parhuzamos fork kulonben mindketten szabad
+# helyet latnanak, es a parhuzamos keret tullepne. Ellenorzes + noveles EGY zar alatt.
+# Kilepes: 0 = siker, 75 = most nincs hely (parhuzamos keret tele — varj), 1 = nem.
+xgrant_claim() {                     # $1=id $2=szulo $3=modell $4=no_ask $5=perm $6=gyerek
+  local id="$1" par="$2" mod="$3" na="$4" pm="$5" kid="$6" r now
+  state_lock || { print -u2 "az állapot-lock nem szerezhető meg"; return 1 }
+  if ! r=$(xgrant_get "$id"); then state_unlock; print -u2 "nincs ilyen kísérlet-felhatalmazás: $id"; return 1; fi
+  now=$(date -u +%s)
+  local stopped until forks used parallel gm gna
+  stopped=$(print -r -- "$r" | jq -r '.stopped')
+  until=$(print -r -- "$r"  | jq -r '.until')
+  forks=$(print -r -- "$r"  | jq -r '.forks')
+  used=$(print -r -- "$r"   | jq -r '.used')
+  parallel=$(print -r -- "$r" | jq -r '.parallel')
+  gm=$(print -r -- "$r"     | jq -r '.model')
+  gna=$(print -r -- "$r"    | jq -r '.no_ask')
+  local why=""
+  if   [[ "$stopped" == true ]];  then why="a felhatalmazást leállították"
+  elif (( until <= now ));       then why="a felhatalmazás lejárt ($(bridge_grant_human "$until"))"
+  elif ! print -r -- "$r" | jq -e --arg p "$par" '.parents | index($p)' >/dev/null; then
+    why="a szülő ($par) nincs a felhatalmazásban: $(print -r -- "$r" | jq -r '.parents | join(", ")')"
+  elif [[ "$mod" != "$gm" ]];    then why="a modell eltér: $mod (a felhatalmazás: $gm)"
+  elif [[ "$na" != "$gna" ]];    then why="a --no-ask eltér (a felhatalmazás: $gna)"
+  elif [[ "$pm" == "bypassPermissions" ]]; then why="emelt jogosultság felhatalmazás alatt nem adható"
+  elif (( used >= forks ));      then why="elfogyott: $used/$forks fork már elindult"
+  fi
+  if [[ -n "$why" ]]; then state_unlock; print -u2 "$why"; return 1; fi
+  local running; running=$(xgrant_running "$r")
+  if (( running >= parallel )); then
+    state_unlock
+    print -u2 "a párhuzamos keret tele ($running/$parallel fut) — várj, amíg egy gyerek lezárul"
+    return 75
+  fi
+  local tmp="$BRIDGE_STATE.tmp.$$"
+  if jq --arg i "$id" --arg k "$kid" --argjson n "$now" \
+       '.xgrants[$i].used += 1 | .xgrants[$i].children += [{name:$k, at:$n}]' "$BRIDGE_STATE" > "$tmp"; then
+    mv -f "$tmp" "$BRIDGE_STATE"
+  else rm -f "$tmp"; state_unlock; print -u2 "az állapotfájl nem írható"; return 1; fi
+  state_unlock
+  return 0
+}
+
+# Ha a hely lefoglalasa UTAN a fork megsem allt fel, a helyet vissza kell adni —
+# kulonben a felhatalmazas elbukott inditasokra fogyna el.
+xgrant_release() {                   # $1 = id, $2 = gyerek
+  state_edit "$BRIDGE_STATE" --arg i "$1" --arg k "$2" \
+    'if (.xgrants // {})[$i] then
+       .xgrants[$i].used = ([.xgrants[$i].used - 1, 0] | max)
+       | .xgrants[$i].children |= map(select(.name != $k))
+     else . end'
+}
+
+xgrant_stop() {                      # $1 = id
+  xgrant_get "$1" >/dev/null || return 1
+  state_edit "$BRIDGE_STATE" --arg i "$1" --argjson n "$(date -u +%s)" \
+    '.xgrants[$i].stopped = true | .xgrants[$i].stopped_at = $n'
+}
+
+# A poller minden koreben: merfoldkovek (25/50/75/100%) es lejarat. Forkonkent NEM
+# szolunk — 290 uzenet zaj lenne. Mindegyik merfoldko EGYSZER.
+xgrant_tick() {
+  [[ -r "$BRIDGE_STATE" ]] || return 0
+  local id r now used forks until pct m running mk
+  now=$(date -u +%s)
+  for id in ${(f)"$(jq -r '(.xgrants // {}) | to_entries[] | select(.value.stopped != true) | .key' "$BRIDGE_STATE" 2>/dev/null)"}; do
+    [[ -n "$id" ]] || continue
+    r=$(xgrant_get "$id") || continue
+    used=$(print -r -- "$r" | jq -r '.used'); forks=$(print -r -- "$r" | jq -r '.forks')
+    until=$(print -r -- "$r" | jq -r '.until')
+    if (( until <= now )); then
+      if ! print -r -- "$r" | jq -e '.notified | index("exp")' >/dev/null; then
+        state_edit "$BRIDGE_STATE" --arg i "$id" '.xgrants[$i].notified += ["exp"]'
+        tg_ready && tg_send_message "$(t m.xexpired "$id" "$used" "$forks")" >/dev/null 2>&1
+        blog "XGRANT-EXPIRED $id ($used/$forks)"
+      fi
+      continue
+    fi
+    (( forks > 0 )) || continue
+    pct=$(( used * 100 / forks ))
+    # ⚠️ EGY KORBEN EGY UZENET. Kis darabszamnal egyetlen fork tobb kuszobot is
+    # atlep (2 forkbol 1 = 25 ES 50), es az elso valtozat mindegyikrol kulon
+    # szolt — raadasul a kuszobot irta ki a tenyleges arany mellett: "25% — 1/2
+    # fork" (2026-10-03, eles proba). Mostantol: az OSSZES atlepett kuszob
+    # rogzul, de csak EGY uzenet megy, es az a TENYLEGES aranyt mutatja.
+    local -a newm=()
+    for m in 25 50 75 100; do
+      (( pct >= m )) || continue
+      print -r -- "$r" | jq -e --argjson m "$m" '.notified | index($m)' >/dev/null && continue
+      newm+=("$m")
+    done
+    (( ${#newm} )) || continue
+    state_edit "$BRIDGE_STATE" --arg i "$id" --argjson ms "[${(j:,:)newm}]" '.xgrants[$i].notified += $ms'
+    running=$(xgrant_running "$r")
+    if tg_ready; then
+      mk=$(jq -nc --arg i "$id" --arg s "$(t btn.xstop)" \
+             '{inline_keyboard:[[{text:$s,callback_data:("xs:" + $i)}]]}')
+      tg_send_message "$(t m.xmilestone "$id" "$pct" "$used" "$forks" "$running" "$(bridge_grant_human "$until")")" "$mk" >/dev/null 2>&1
+    fi
+    blog "XGRANT-MILESTONE $id $pct% ($used/$forks, fut: $running, küszöb: ${(j:,:)newm})"
+  done
 }
 
 bridge_grant_human() {               # $1 = epoch -> helyi ido, olvashatoan
@@ -767,6 +973,58 @@ validate_request() {                 # $1 = kérés-fájl
     bridge_is_spawned "$agent" || {
       print -u2 "ezt az agentet nem a híd indította: $agent (a gyökereket a watchdog kezeli)"; return 1 }
     jq -n --arg a "$agent" '{mode:"reconnect", target:$a, agent:$a}'
+    return 0
+  fi
+
+  # --- KISERLET-FELHATALMAZAS: egy gombnyomas, kemeny korlatokkal ------------
+  # A kervenyezo adja meg a teljes csomagot; a felhasznalo igent vagy nemet mond.
+  # Itt csak az ervenyesseget es a jozansagi plafonokat nezzuk — a plafon a
+  # `bridge-allow.json`-ban van, vagyis az EMBER kezeben, nem a kervenyben.
+  if [[ "$action" == "experiment" ]]; then
+    local xf xh xpar xm xna xrb xpu xpm pj p n mx
+    xrb=$(jq -r '.requested_by // empty' "$f")
+    [[ "$xrb" =~ '^[a-zA-Z0-9_-]{3,64}$' ]] || { print -u2 "requested_by hiányzik vagy érvénytelen: ${xrb:-<üres>}"; return 1 }
+    for n in forks hours parallel; do
+      mx=$(jq -r --arg k "$n" '.[$k] // empty' "$f")
+      [[ "$mx" == <1-> ]] || { print -u2 "$n: pozitív egész kell (kapott: ${mx:-<üres>})"; return 1 }
+    done
+    xf=$(jq -r '.forks' "$f"); xh=$(jq -r '.hours' "$f"); xpar=$(jq -r '.parallel' "$f")
+    (( xf   <= $(xgrant_limit max_forks) ))    || { print -u2 "forks: $xf > plafon $(xgrant_limit max_forks) (bridge-allow.json: experiment.max_forks)"; return 1 }
+    (( xh   <= $(xgrant_limit max_hours) ))    || { print -u2 "hours: $xh > plafon $(xgrant_limit max_hours) (bridge-allow.json: experiment.max_hours)"; return 1 }
+    (( xpar <= $(xgrant_limit max_parallel) )) || { print -u2 "parallel: $xpar > plafon $(xgrant_limit max_parallel) (bridge-allow.json: experiment.max_parallel)"; return 1 }
+    (( xpar <= xf )) || { print -u2 "parallel ($xpar) nem lehet több, mint forks ($xf)"; return 1 }
+    xm=$(jq -r '.model // empty' "$f")
+    [[ -n "$xm" ]] || { print -u2 "a modellt meg kell adni (a felhatalmazás egy konkrét modellre szól)"; return 1 }
+    agent_model_valid "$xm" || { print -u2 "érvénytelen model: $xm"; return 1 }
+    xna=$(jq -r 'if has("no_ask") then .no_ask else true end' "$f")
+    [[ "$xna" == true || "$xna" == false ]] || { print -u2 "no_ask: true vagy false"; return 1 }
+    # Emelt jogosultsag felhatalmazas alatt SOHA — ugyanaz az elv, mint a
+    # meglevo idokorlatos felhatalmazasoknal.
+    xpm=$(jq -r '.permission_mode // empty' "$f")
+    [[ "$xpm" != "bypassPermissions" ]] || { print -u2 "bypassPermissions felhatalmazás alatt nem kérhető"; return 1 }
+    # ⚠️ A SZULOK PONTOS NEVVEL, nem prefixszel. A prefix-illesztes ezen a heten
+    # tobbszor rossz agentet talalt meg; egy felhatalmazasnak pontosan meg kell
+    # mondania, kire szol. A szuloknek MAR FUTNIUK kell: igy a kervenyezo elobb
+    # felepiti oket, es a felhatalmazast mar a vegleges nevekkel keri.
+    pj=$(jq -c '.parents // empty' "$f")
+    print -r -- "$pj" | jq -e 'type == "array" and length >= 1 and length <= 10' >/dev/null 2>&1 \
+      || { print -u2 "parents: 1-10 elemű lista kell (pontos agent-nevek)"; return 1 }
+    for p in ${(f)"$(print -r -- "$pj" | jq -r '.[]')"}; do
+      [[ "$p" =~ '^[a-zA-Z0-9_-]{3,64}$' ]] || { print -u2 "érvénytelen szülő-név: $p"; return 1 }
+      tmux has-session -t "=agent-$p" 2>/dev/null \
+        || { print -u2 "a szülő nem fut (pontos névvel kell, és előbb el kell indítani): $p"; return 1 }
+      ok=false
+      for pp in ${(f)"$(jq -r '.parents[]?' "$BRIDGE_CONFIG" 2>/dev/null)"}; do
+        [[ "$p" == "$pp-"* ]] && { ok=true; break }
+      done
+      $ok || { print -u2 "a szülő nem whitelistázott gyökérből származik (vagy maga a gyökér): $p"; return 1 }
+    done
+    xpu=$(jq -r '.purpose // ""' "$f")
+    (( $(printf %s "$xpu" | wc -c) <= 500 )) || { print -u2 "purpose: legfeljebb 500 bájt"; return 1 }
+    jq -n --argjson ps "$pj" --argjson fk "$xf" --argjson hr "$xh" --argjson pa "$xpar" \
+          --arg m "$xm" --argjson na "$xna" --arg rb "$xrb" --arg pu "$xpu" \
+      '{mode:"experiment", target:$rb, parents:$ps, forks:$fk, hours:$hr, parallel:$pa,
+        model:$m, no_ask:$na, requested_by:$rb, purpose:$pu}'
     return 0
   fi
 
@@ -1134,6 +1392,7 @@ execute_request() {                  # $1 = id, $2 = normalizált kérés JSON
     continue)  continue_agent "$1" "$2" ;;
     close)     close_agent_request "$1" "$2" ;;
     reconnect) reconnect_agent "$1" "$2" ;;
+    experiment) xgrant_from_request "$1" "$2" ;;
     *)        spawn_from_request "$1" "$2" ;;
   esac
 }
@@ -1468,6 +1727,22 @@ summary_text() {                     # $1 = id, $2 = normalizált kérés JSON
   f() { print -r -- "$req" | jq -r "$1" }
 
   local mode; mode=$(f '.mode // "fork"')
+
+  if [[ "$mode" == "experiment" ]]; then
+    # Nyelvfuggetlen kulcs: ertek blokk — a dontes a gombos uzenet alapjan
+    # szuletik (ott minden parameter ott van), ez a csatolmany a nyilvantartasnak.
+    print -r -- "EXPERIMENT AUTHORISATION / KÍSÉRLET-FELHATALMAZÁS"
+    print -r -- "id:           $id"
+    print -r -- "requested_by: $(f .requested_by)"
+    print -r -- "parents:      $(f '.parents | join(", ")')"
+    print -r -- "forks:        $(f .forks)"
+    print -r -- "hours:        $(f .hours)"
+    print -r -- "parallel:     $(f .parallel)"
+    print -r -- "model:        $(f .model)"
+    print -r -- "no_ask:       $(f .no_ask)"
+    print -r -- "purpose:      $(f .purpose)"
+    return 0
+  fi
 
   if [[ "$mode" == "reconnect" ]]; then
     print -r -- "ÚJRACSATLAKOZTATÁS"

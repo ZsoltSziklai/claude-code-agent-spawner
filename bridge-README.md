@@ -319,6 +319,93 @@ request. On the two unattended execution paths — under a time-boxed grant, and
 `PERM-DOWNGRADE` line into `bridge.log`. The approval message warns separately
 when a request asks for elevated permission.
 
+## Many forks under one approval — experiment authorisation
+
+When a measurement needs dozens or hundreds of forks, one Telegram button per fork
+is not workable — and leaving `--requested-by` off to dodge the gate is exactly the
+wrong answer, because then nobody approved anything. Instead the requester asks
+**once**, for the whole package, and the user says yes or no.
+
+**1. Build the parents first.** The authorisation names its parents exactly, so they
+must already be running. (Exact names, not prefixes — a prefix match found the wrong
+agent several times this week.)
+
+**2. Drop the request** into `requests/<id>.json`:
+
+```json
+{
+  "action":       "experiment",
+  "requested_by": "mac-main-dexp0-pilot-10",
+  "parents":      ["mac-main-xr10-a", "mac-main-xr10-b"],
+  "forks":        290,
+  "hours":        8,
+  "parallel":     5,
+  "model":        "claude-haiku-4-5-20251001",
+  "no_ask":       true,
+  "purpose":      "role-continuity pilot"
+}
+```
+
+| field | required | note |
+|---|---|---|
+| `requested_by` | **yes** | who asks — recorded in the authorisation |
+| `parents` | **yes** | 1–10 exact agent names; each must be running and descend from a whitelisted root (a root itself cannot be a parent) |
+| `forks` | **yes** | total number of forks allowed |
+| `hours` | **yes** | how long the authorisation lives |
+| `parallel` | **yes** | how many may run at once (≤ `forks`) |
+| `model` | **yes** | the authorisation is for one specific model; dated ids work (`claude-haiku-4-5-20251001`) |
+| `no_ask` | no | default `true`; every child gets `--no-ask` |
+| `purpose` | no | ≤ 500 bytes, shown on the approval message |
+
+A request above the sanity ceiling in `bridge-allow.json` (`experiment.max_forks /
+max_hours / max_parallel`, default 500 / 24 / 10) is rejected before it reaches the
+phone. `bypassPermissions` is never allowed under an authorisation.
+
+**3. The user approves or rejects** — one button, for the whole package. Every
+parameter is on the button message itself, because nobody opens the attachment on a
+phone before pressing.
+
+**4. Fork under it** — from a parent's session:
+
+```bash
+~/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> [--cwd …] [<prompt>]
+```
+
+`agent-exp-fork` only ever forks under an authorisation: without a valid, approved id
+it does nothing, and the caller cannot pass its own `--grant` or `--requested-by`.
+That is what makes it safe to take **this one command** out of the sandbox
+(`sandbox.excludedCommands`) on a fixed, installed path — taking `fork-agent` itself
+out would let any agent fork unsandboxed and ungated by omitting a flag.
+
+What the system enforces, on every fork:
+
+- the parent is one of the named ones, the model and `--no-ask` match
+- `forks` is not exhausted, the authorisation has not expired or been stopped
+- fewer than `parallel` children are running — a child that was claimed but has not
+  started yet counts too (otherwise two fast forks would both see the same free slot)
+
+If the parallel slots are full, `agent-exp-fork` exits with **75** — wait for a child
+to close and retry. Any other refusal is final (exit 1, with the reason).
+
+What it does **not** replace: the self-replication guard and the depth limit still
+apply. The system-wide rate limit (10 forks / 10 minutes) does not — that one is
+against unapproved runaway forking, and an experiment using it would block every
+other agent's forks for hours. The authorisation's own limits are tighter anyway.
+
+**5. While it runs** — Telegram reports at 25 / 50 / 75 / 100 % and on expiry (not
+per fork; 290 messages would be noise). Every report carries a **Stop** button: no new
+forks start, running ones continue.
+
+**6. For the replication package:**
+
+```bash
+~/.claude/agent-queue/bin/agent-grant-export <id> > grant-<id>.json
+```
+
+It contains who approved what and when, the exact limits, how much was used, and every
+fork that started under it (time, name, parent). That answers "who authorised what for
+whom" with a data file rather than a hand-edited settings file.
+
 ## What happens next
 
 1. The relay validates. A bad request → `requests/<id>.status` = `rejected`, with
@@ -718,6 +805,95 @@ felügyelet nélküli végrehajtási ágon — időkorlátos felhatalmazás alat
 `gate: "audit"` módban — a híd csendben `auto`-ra fokozza vissza, és ezt a
 `bridge.log`-ba `PERM-DOWNGRADE` sorként beírja. A jóváhagyó üzenet külön
 figyelmeztet, ha a kérés emelt jogosultságot kér.
+
+### Sok fork egy jóváhagyással — kísérlet-felhatalmazás
+
+Ha egy mérésnek tucatnyi vagy száz fork kell, forkonként egy Telegram-gomb nem
+járható — és a `--requested-by` elhagyása a kapu megkerülésére pont a rossz válasz,
+mert akkor senki nem hagyott jóvá semmit. Helyette a kérvényező **egyszer** kér, a
+teljes csomagra, és a felhasználó igent vagy nemet mond.
+
+**1. Előbb a szülőket kell felépíteni.** A felhatalmazás pontos névvel nevezi meg a
+szülőket, tehát már futniuk kell. (Pontos név, nem prefix — a prefix-illesztés ezen
+a héten többször rossz agentet talált meg.)
+
+**2. A kérés** a `requests/<id>.json`-ba:
+
+```json
+{
+  "action":       "experiment",
+  "requested_by": "mac-main-dexp0-pilot-10",
+  "parents":      ["mac-main-xr10-a", "mac-main-xr10-b"],
+  "forks":        290,
+  "hours":        8,
+  "parallel":     5,
+  "model":        "claude-haiku-4-5-20251001",
+  "no_ask":       true,
+  "purpose":      "szerepfolytonosság-pilot"
+}
+```
+
+| mező | kötelező | megjegyzés |
+|---|---|---|
+| `requested_by` | **igen** | ki kéri — a felhatalmazásba kerül |
+| `parents` | **igen** | 1–10 pontos agent-név; mindegyiknek futnia kell, és whitelistázott gyökérből kell származnia (gyökér maga nem lehet szülő) |
+| `forks` | **igen** | összesen hány fork engedélyezett |
+| `hours` | **igen** | meddig él a felhatalmazás |
+| `parallel` | **igen** | egyszerre hány futhat (≤ `forks`) |
+| `model` | **igen** | a felhatalmazás egy konkrét modellre szól; a dátumozott id is jó (`claude-haiku-4-5-20251001`) |
+| `no_ask` | nem | alapból `true`; minden gyerek `--no-ask`-ot kap |
+| `purpose` | nem | ≤ 500 bájt, a jóváhagyó üzeneten látszik |
+
+A `bridge-allow.json` józansági plafonja (`experiment.max_forks / max_hours /
+max_parallel`, alapból 500 / 24 / 10) fölötti kérés el sem jut a telefonig. A
+`bypassPermissions` felhatalmazás alatt soha nem engedélyezett.
+
+**3. A felhasználó jóváhagyja vagy elutasítja** — egy gombbal, az egész csomagot. Minden
+paraméter a gombos üzeneten van, mert gombnyomás előtt a telefonon senki nem nyitja
+meg a csatolmányt.
+
+**4. Fork alatta** — a szülő sessionjéből:
+
+```bash
+~/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> [--cwd …] [<prompt>]
+```
+
+Az `agent-exp-fork` kizárólag felhatalmazás alatt forkol: érvényes, jóváhagyott id
+nélkül nem tesz semmit, és a hívó nem adhat meg saját `--grant`-ot vagy
+`--requested-by`-t. Ezért biztonságos **ezt az egy parancsot** kivenni a homokozóból
+(`sandbox.excludedCommands`), állandó, telepített útvonalon — a `fork-agent`-et magát
+kivenni azt jelentené, hogy bármelyik agent homokozón kívül, kapu nélkül forkolhatna,
+egyetlen kapcsoló elhagyásával.
+
+Amit a rendszer minden forknál kikényszerít:
+
+- a szülő a megnevezettek egyike, a modell és a `--no-ask` egyezik
+- a `forks` nem fogyott el, a felhatalmazás nem járt le és nem állították le
+- `parallel`-nél kevesebb gyerek fut — a lefoglalt, de még el nem indult gyerek is
+  számít (különben két gyors fork mindkettő szabadnak látná ugyanazt a helyet)
+
+Ha a párhuzamos keret tele, az `agent-exp-fork` **75**-tel lép ki — meg kell várni,
+amíg egy gyerek lezárul, és újra kell próbálni. Minden más elutasítás végleges
+(kilépés 1, az okkal).
+
+Amit **nem** vált ki: az önmásolás-őr és a mélységkorlát továbbra is él. A
+rendszerszintű sebességkorlát (10 fork / 10 perc) viszont nem — az a jóváhagyatlan,
+elszabadult forkolás ellen van, és ha egy kísérlet használná, órákon át minden más
+agent forkját blokkolná. A felhatalmazás saját korlátai amúgy is szorosabbak.
+
+**5. Futás közben** — Telegram 25 / 50 / 75 / 100 %-nál és lejáratkor szól (nem
+forkonként; 290 üzenet zaj lenne). Minden jelentésen ott a **Leállítás** gomb: új fork
+nem indul, a futók folytatják.
+
+**6. A replikációs csomagnak:**
+
+```bash
+~/.claude/agent-queue/bin/agent-grant-export <id> > grant-<id>.json
+```
+
+Benne van, ki mit hagyott jóvá és mikor, a pontos korlátok, mennyi fogyott el, és minden
+fork, ami alatta indult (idő, név, szülő). A „ki mit engedélyezett kinek" kérdésre így
+egy adatfájl felel, nem egy kézzel szerkesztett beállítás-fájl.
 
 ### Mi történik utána
 

@@ -10,6 +10,11 @@ NAME="${NAME#agent-}"
 # Unregister FIRST — otherwise the child watchdog could restore it in the
 # window between the tmux kill and the registry cleanup.
 unregister_agent "$NAME"
+# ⚠️ A FORK-FABOL IS KI KELL VENNI. Eddig csak a `close-tree` tette meg, igy a
+# `kill-one` (es az erre epulo `kill-tree`) utan a gyerek bent maradt a faban —
+# 2026-10-03-an egy eles proba utan pont igy maradt ott egy halott fork. Kesobb egy
+# azonos nevu uj agent a REGI szulot orokolne a melysegszamitasban.
+fork_tree_forget "$NAME" 2>/dev/null
 
 kill_one_tmux "$NAME"
 

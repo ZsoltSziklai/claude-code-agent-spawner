@@ -47,7 +47,7 @@ PARENT_NAME="${CLAUDE_AGENT_NAME:-}"
 # ---------------------------------------------------------------------------
 # Argumentumok
 # ---------------------------------------------------------------------------
-SUFFIX=""; WANT_WT=false; REQ_CWD=""; MODEL="opus"; EFFORT="high"
+SUFFIX=""; WANT_WT=false; REQ_CWD=""; MODEL="opus"; EFFORT="high"; MODEL_SET=false; GRANT=""
 # ⚠️ ALAPERTELMEZES: FRISS session (2026-08-31). Korabban `full` volt, azaz a
 # gyerek a szulo TELJES beszelgeteset orokolte. Ketszer bizonyitottan a szulo
 # SZEREPET folytatta a sajat feladata helyett (714 soros orokolt atirat, a
@@ -83,15 +83,18 @@ while (( $# )); do
     # nem olvassa. Kezi /fork-nal ez NEM all, ezert kapcsolo es nem alapertelmezes.
     --no-ask)    NO_ASK=true; shift ;;
     --cwd)       REQ_CWD="${2:?--cwd needs a value}"; shift 2 ;;
-    --model)     MODEL="${2:?--model needs a value}"; shift 2 ;;
+    --model)     MODEL="${2:?--model needs a value}"; MODEL_SET=true; shift 2 ;;
     --effort)    EFFORT="${2:?--effort needs a value}"; shift 2 ;;
     --permission-mode) PERM="${2:?--permission-mode needs a value}"; shift 2 ;;
     --requested-by)    REQUESTED_BY="${2:?--requested-by needs a value}"; shift 2 ;;
+    # KISERLET-FELHATALMAZAS alatt: gombnyomas nelkul indul, de csak a jovahagyott
+    # kereten belul (szulo, modell, --no-ask, darabszam, parhuzamossag, lejarat).
+    --grant)           GRANT="${2:?--grant needs a value}"; shift 2 ;;
     --*)         die "ismeretlen kapcsoló: $1" ;;
     *)           if [[ -z "$SUFFIX" ]]; then SUFFIX="$1"; else PROMPT="$1"; fi; shift ;;
   esac
 done
-[[ -n "$SUFFIX" ]] || die "usage: fork-agent <suffix> [--worktree] [--cwd D] [--model M] [--effort E] [--permission-mode P] [--summary|--inherit|--fresh] [--no-ask] [--requested-by AGENT] [<prompt>]"
+[[ -n "$SUFFIX" ]] || die "usage: fork-agent <suffix> [--worktree] [--cwd D] [--model M] [--effort E] [--permission-mode P] [--summary|--inherit|--fresh] [--no-ask] [--requested-by AGENT] [--grant ID] [<prompt>]"
 
 # ⚠️ A HAROM validator (spawner, hid, fork-agent) PERMISSION-listajanak is
 # egyeznie kell — ugyanaz a drift-osztaly, ami 2026-08-26-on a modell-listaknal
@@ -143,12 +146,30 @@ fi
 # a legrosszabb kimenet: fantom utan nyomozunk. A vedelem ettol nem gyengul
 # erdemben — a megfigyelt bomba 3 forkot csinalt 80 masodperc alatt, egy valodi
 # elszabadulas a 10-et is masodpercek alatt eleri.
+# --- KISERLET-FELHATALMAZAS ---------------------------------------------------
+# A fenti ket or (onmasolas, melyseg) felhatalmazas alatt is fut: azok
+# determinisztikus vedelmek. A felhatalmazas a KAPUT valtja ki, es a rendszerszintu
+# sebessegkorlatot — utobbit azert, mert ha a kiserlet hasznalna, ~5 oran at MINDEN
+# MAS agent forkja buknak. A felhatalmazas sajat korlatai szorosabbak.
+if [[ -n "$GRANT" ]]; then
+  [[ "$GRANT" =~ '^[A-Za-z0-9._-]{1,48}$' ]] || die "érvénytelen felhatalmazás-azonosító: $GRANT"
+  source "$(dirname "${(%):-%x}")/_bridge-lib.sh" || die "a híd-könyvtár nem töltődött be"
+  _XREC=$(xgrant_get "$GRANT") || die "nincs ilyen kísérlet-felhatalmazás: $GRANT"
+  # Modell: ha a hivo nem adta meg, a felhatalmazase. Ha megadta es elter, az
+  # alabbi foglalas elutasitja — nem csendben irjuk felul.
+  $MODEL_SET || MODEL=$(print -r -- "$_XREC" | jq -r .model)
+  # A --no-ask a felhatalmazas resze: igy a kiserlet minden gyereke ugyanugy fut.
+  [[ "$(print -r -- "$_XREC" | jq -r .no_ask)" == true ]] && NO_ASK=true
+fi
+
 MAX_BURST="${CLAUDE_AGENT_MAX_BURST:-10}"     # ennyi fork / ablak, RENDSZERSZINTEN
 BURST_WIN="${CLAUDE_AGENT_BURST_WINDOW:-600}" # masodperc
-if [[ -r "$LOG" ]] && (( MAX_BURST > 0 )); then
+if [[ -z "$GRANT" && -r "$LOG" ]] && (( MAX_BURST > 0 )); then
   _now=$(date -u +%s)
   # A naplo ISO-8601 UTC bejegyzeseket ir; csak a FORKED sorok szamitanak.
-  _recent=$(grep FORKED "$LOG" 2>/dev/null | tail -200 | while read -r _ts _; do
+  # A felhatalmazas alatti forkok (` grant=`) NEM szamitanak: kulonben egy futo
+  # kiserlet minden mas agent forkjat blokkolna.
+  _recent=$(grep FORKED "$LOG" 2>/dev/null | grep -v ' grant=' | tail -200 | while read -r _ts _; do
     _e=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_ts" +%s 2>/dev/null) || continue
     (( _now - _e <= BURST_WIN )) && print x
   done | wc -l | tr -d ' ')
@@ -169,8 +190,14 @@ fi
 # ⚠️ KORLAT, amit ki kell mondani: ez ONBEVALLAS, mint a spawnere. Egy elszabadult
 # agent egyszeruen nem adja meg a kapcsolot. A determinisztikus tartalekvedelem az
 # onmasolas-or, a melysegkorlat es a sebessegkorlat — a kapu POLITIKA, nem gat.
-if [[ -n "$REQUESTED_BY" ]]; then
-  BR_DIR="$CLAUDE_AGENT_QUEUE/bridge/requests"
+if [[ -n "$REQUESTED_BY" && -z "$GRANT" ]]; then
+  # ⚠️⚠️ v1.0.0 OTA ROSSZ KONYVTAR VOLT: `$CLAUDE_AGENT_QUEUE/bridge/requests`. A hid
+  # viszont a `$BRIDGE_DIR`-bol olvas (alapbol `$CLAUDE_AGENT_ROOT/bridge`), es a
+  # `~/.claude/agent-queue/bridge` nem is letezik — a kapuzott fork tehat MINDIG
+  # "nincs híd-sor" hibaval halt meg; a fork.log-ban egyetlen GATED sor sincs.
+  # A teszt ugyanazt a rossz szerkezetet epitette fel, ezert nem jelzett.
+  # Az irónak es az olvasonak UGYANABBOL a valtozobol kell dolgoznia.
+  BR_DIR="${BRIDGE_DIR:-${CLAUDE_AGENT_ROOT:-$HOME/ClaudeProjects}/bridge}/requests"
   [[ -d "$BR_DIR" ]] || die "nincs híd-sor ($BR_DIR) — kapuzott forkot nem tudok beadni"
   RID="fork-${CLEAN}-$(date -u +%Y%m%d%H%M%S)"
   RID="${RID[1,48]}"
@@ -224,6 +251,22 @@ while "$TMUX_BIN" has-session -t "=agent-$NAME" 2>/dev/null; do
   (( n > 99 )) && die "túl sok névütközés: agent-$ORIG"
   NAME="${ORIG}-${n}"; (( n++ ))
 done
+
+# --- a felhatalmazas helyfoglalasa -----------------------------------------
+# A nev mostantol vegleges. A foglalas MINDEN letrehozas (worktree, session) ELOTT
+# tortenik, atomikusan (ket parhuzamos fork ne lassa mindketto szabadnak a helyet).
+# Ha kesobb barmi elbukik, a kilepesi csapda visszaadja a helyet — kulonben a
+# felhatalmazas elbukott inditasokra fogyna el.
+if [[ -n "$GRANT" ]]; then
+  xgrant_claim "$GRANT" "$PARENT_NAME" "$MODEL" "$NO_ASK" "$PERM" "$NAME"; _xrc=$?
+  if (( _xrc == 75 )); then
+    print -u2 "fork-agent: a párhuzamos keret tele — próbáld újra, amikor egy gyerek lezárult"
+    exit 75
+  fi
+  (( _xrc == 0 )) || die "a kísérlet-felhatalmazás nem engedi ezt a forkot ($GRANT)"
+  _XCLAIMED=true; _XDONE=false
+  trap '[[ "$_XCLAIMED" == true && "$_XDONE" != true ]] && xgrant_release "$GRANT" "$NAME"' EXIT
+fi
 
 # ---------------------------------------------------------------------------
 # cwd — alapból a szülőé; a spawner allowlistjével összhangban
@@ -475,7 +518,8 @@ fi
 
 # A melysegkorlat csak akkor er valamit, ha az elt rogzitjuk is.
 fork_tree_record "$NAME" "$PARENT_NAME" || log "WARN a fork-fa rogzitese nem sikerult: $NAME"
-log "FORKED $NAME from=$PARENT_NAME sid=$PARENT_SID cwd=$RUN_CWD worktree=$WANT_WT resume=$RESUME_MODE"
+_XDONE=true
+log "FORKED $NAME from=$PARENT_NAME sid=$PARENT_SID cwd=$RUN_CWD worktree=$WANT_WT resume=$RESUME_MODE${GRANT:+ grant=$GRANT}"
 print "fork kész: $NAME"
 print "  szülő      : $PARENT_NAME ($PARENT_SID)"
 print "  cwd        : $RUN_CWD"
