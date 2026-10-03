@@ -12,8 +12,10 @@ the Mac's real disk**. That one channel is the whole bridge.
 
 On the Mac, a launchd watcher picks up what you drop, validates it, asks the
 user for approval **in Telegram**, and only then starts an agent. That agent
-inherits the conversation of the parent you name, does the work with full
-native access, and its answer comes back to you as a file in `bridge/results/`.
+starts from the parent you name — in its project, with its tools — but by
+default as a **fresh session that knows only your task**. It does the work with
+full native access, and its answer comes back to you as a file in
+`bridge/results/`.
 
 ## Before anything else: is the folder mounted?
 
@@ -24,8 +26,11 @@ nobody.
 
 ## Choosing the parent — this is the important decision
 
-The spawned agent **inherits the named parent's conversation**. Pick the session
-that already knows the topic; that is the entire point.
+The parent decides **where** the new agent works — its project and working
+directory, its tools, and the tree it belongs to (closing the parent closes it
+too). It does **not** decide what the agent knows: by default the child starts
+fresh and knows only your `task` (see `resume` below). Pick the parent whose
+project the work belongs to; `about` tells you that.
 
 **Read `bridge/agents.json` first.** The Mac keeps it current — never work from a
 list you remember, because the agents change:
@@ -62,13 +67,13 @@ list you remember, because the agents change:
 
 If the file is missing, the Mac-side watcher is not running — say so and stop.
 If no parent fits the task, say that too rather than guessing; a fork from the
-wrong parent inherits the wrong context and wastes the user's tokens.
+wrong parent lands in the wrong project and wastes the user's tokens.
 
 ## Two kinds of request
 
 | you want | field | what happens |
 |---|---|---|
-| a **new** agent for a new piece of work | `parent` | a fresh agent is forked, inheriting the parent's conversation |
+| a **new** agent for a new piece of work | `parent` | a fresh agent is forked — it does **not** inherit the parent's conversation unless you ask (`resume`) |
 | to **continue** with an agent that already did work for you | `agent` | your text goes into that same session — no new agent, nothing re-discovered |
 
 Use `agent` whenever you are following up on something a spawned agent already
@@ -191,26 +196,34 @@ characters, `A-Za-z0-9._-` only (it has to fit in a Telegram button).
 | `model` | no | **default `opus`**. An alias (`opus` / `sonnet` / `haiku` / `fable`) always means the *latest* model of that family, so prefer it. Pin an id only when you deliberately want a fixed version: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7` (optional `[1m]` suffix on any of them, aliases included) |
 | `effort` | no | `low` … `max` |
 | `permission_mode` | no | **default `auto`**. Also `acceptEdits`, `plan`, `dontAsk`, `manual`, `bypassPermissions` — see the note below before asking for the last one |
-| `resume` | no | fork only. **default `full`** — the child inherits the parent's *entire* conversation. `summary` starts it from a compacted context: much faster to the first turn, but it sees less. See below |
+| `resume` | no | fork only. **default `none`** — a fresh session that knows only your `task`. `summary` / `full` pass on the parent's conversation; ask for them only deliberately. See below |
 | `cwd` | no | relative to `~/ClaudeProjects`; defaults to the parent's |
 
 ### `resume` — how much of the parent the child inherits
 
-**Default (`full`) is the point of this tool**: the child continues the parent's
-conversation and needs no re-briefing. Keep it when the task builds on what the
-parent already knows.
+| value | the child gets |
+|---|---|
+| `none` (**default**) | **nothing** — a fresh session that knows only your `task` |
+| `summary` | a compacted version of the parent's conversation |
+| `full` | the parent's whole conversation |
 
-But inheriting is not free. The child has to load the whole parent conversation
-before its first turn, and on a long-running parent that can take **minutes**.
-On 2026-08-29 two forks from a 5.5 MB parent session produced *nothing* before
-they were closed: the task had arrived, the agent simply had not got to it yet.
+**Write every task as if the child had never heard of the work** — because by
+default it hasn't. Name the files, the hosts, the goal and what "done" means. A
+task like "fix the thing we discussed" reaches a child that has no idea what was
+discussed.
 
-Ask for `resume: "summary"` when the task is **self-contained** — it stands on
-its own in the `task` field and does not depend on the parent's history. The
-child then starts from a compacted context and gets to work quickly.
+The default used to be `full`, and it was changed for a measured reason. On
+2026-08-31 the child of an inheriting fork did not do its task: it **continued the
+parent's role**, monitoring a run as the command center with no work of its own.
+In its transcript the task sat on line 703 of 714 — one short message after 700
+lines of "you are the command center". A sentence telling it to treat the history
+as background was there and was not enough. With `none` there is nothing to
+override.
 
-If you use `full`, **give the agent time**. Do not conclude it is broken because
-no report appeared in the first minutes.
+Ask for `summary` or `full` only when the task genuinely needs the parent's
+history. Inheriting is also slow: the child loads the whole conversation before
+its first turn — **minutes** on a long-running parent — so give it time, and do
+not conclude it is broken because no report appeared at once.
 
 ### When to ask for a worktree
 
@@ -244,8 +257,82 @@ request**. On the two unattended paths — under a standing grant, or in
 `gate: "audit"` — the bridge silently downgrades it to `auto`. So ask for it
 only when the task genuinely needs it, and never assume you got it.
 
-Write the task so it stands alone. The agent inherits the *parent's*
-conversation, not yours — it has no idea what the user just told you.
+Write the task so it stands alone. The agent does not see your conversation —
+and by default not the parent's either. It has no idea what the user just told
+you.
+
+## Many forks under one approval — experiment authorisation
+
+Some work needs dozens or hundreds of forks — typically a measurement, where one
+agent runs a protocol that forks the same parents again and again. One Telegram
+button per fork is not workable, and **leaving the gate out is not an option**:
+then nobody approved anything, and a reviewer asking "who authorised what" gets no
+answer. Instead you ask **once**, for the whole package, and the user says yes or
+no.
+
+You will usually not fork yourself — you have no shell on the Mac. Your part is to
+**file the authorisation** and hand its id to the agent that runs the protocol.
+
+**1. The parents must already be running**, under their final names. The
+authorisation names them exactly (no prefixes), so they are built first — usually
+by the executing agent, through the normal gate.
+
+**2. Write `bridge/requests/<id>.json`:**
+
+```json
+{
+  "action":       "experiment",
+  "requested_by": "mac-main-dexp0-pilot-10",
+  "parents":      ["mac-main-xr10-a", "mac-main-xr10-b"],
+  "forks":        290,
+  "hours":        8,
+  "parallel":     5,
+  "model":        "claude-haiku-4-5-20251001",
+  "no_ask":       true,
+  "purpose":      "role-continuity pilot, protocol v3"
+}
+```
+
+| field | required | notes |
+|---|---|---|
+| `requested_by` | **yes** | the agent that will use it — recorded in the authorisation |
+| `parents` | **yes** | 1–10 exact names; each must be running and descend from an allowed root (a root itself cannot be a parent) |
+| `forks` | **yes** | the total number of forks |
+| `hours` | **yes** | how long it lives |
+| `parallel` | **yes** | how many may run at once (≤ `forks`) |
+| `model` | **yes** | one specific model; dated ids work (`claude-haiku-4-5-20251001`) — a measurement should not use an alias, because aliases move |
+| `no_ask` | no | default `true` — every child gets `--no-ask` |
+| `purpose` | no | ≤ 500 bytes; shown to the user on the approval message |
+
+**Get the numbers right before you file.** The user approves or rejects the
+package as it is — there is no "approve, but only 50" button. A request above the
+sanity ceiling in `bridge-allow.json` (default 500 forks / 24 h / 10 parallel) is
+rejected before it reaches the phone, and `bypassPermissions` is never allowed.
+
+**3. Wait for the final status** like any other request. On approval it is
+`spawned`, with the message `kísérlet-felhatalmazás érvényes: <id> — lejár …`.
+
+**4. Hand the id to the executing agent** (a continuation request), with these
+facts — it needs all of them:
+
+- it forks from a **parent's session** with
+  `/Users/<user>/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> [--cwd …] [<prompt>]`,
+  spelling the path out exactly like that (the sandbox exclusion matches the text
+  of the call, so `~/…` would not match);
+- exit **75** means the parallel slots are full: wait for a child to close and
+  retry. Any other refusal is final, and the message says why;
+- the authorisation enforces parent, model, `--no-ask`, the count, the parallel
+  cap and the expiry — a fork that does not fit is refused, not adjusted;
+- the user is told at 25 / 50 / 75 / 100 % and on expiry, and can **stop** it from
+  Telegram at any time: running children continue, new forks are refused.
+
+**5. For the replication package**, the executing agent runs
+`/Users/<user>/.claude/agent-queue/bin/agent-grant-export <id>`: who approved what
+and when, the exact limits, how much was used, and every fork that started under it.
+
+If the executing agent reports that the parent's session cannot run
+`agent-exp-fork` (sandbox or permission refusal), that is a setting on the user's
+side — tell the user; do not look for a way around it.
 
 ## Reading the mount is not free — you get a snapshot
 
@@ -347,9 +434,9 @@ on disk while it waited for an answer that, by construction, could never arrive.
 
 ## Where this stops
 
-- **Never write the same request twice.** A duplicate id is ignored; a new id
-  spawns a *second* agent. If something looks stuck, read the `.status` and
-  report it.
+- **Never write the same request twice.** Re-using an id gets the request
+  `rejected` (the user is told in Telegram); a new id spawns a *second* agent. If
+  something looks stuck, read the `.status` and report it.
 - **You cannot delete** (`rm` is blocked). Don't try to clean up — on the Mac
   side the poller archives a request only after it both decided on it and started
   it successfully. Requests that ran under a standing approval or in

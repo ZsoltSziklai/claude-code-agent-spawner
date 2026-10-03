@@ -7,3 +7,6 @@ bridge-allow.json
 # Munkakornyezet, nem forras — es beagyazott git repok, amiket a `git add -A`
 # gitlinkkent venne fel. 2026-08-26: egyszer meg is tortent.
 .claude/
+
+# Kiadasi csomagok (pl. a Desktop-skill zip-je) — a release-hez csatolva, nem a repoba
+dist/
