@@ -198,7 +198,16 @@ for f in "$REQ_DIR"/*.json; do
     print "  [dry-run] jóváhagyásra várna: $id"
     print "  [dry-run] összefoglaló: $sum"
   elif tg_ready; then
-    tg_send_document "$sum" "$(t m.reqcaption "$id")" >/dev/null 2>&1
+    # ⚠️ A FELIRAT a kerés FAJTAJAT nevezze meg. Kiserletnel eddig is
+    # "Agent-inditasi keres" allt rajta, szamok nelkul (2026-10-03, eles proba) —
+    # holott nem indul agent, es a dontes a szamokrol szol.
+    if [[ "$mode" == "experiment" ]]; then
+      tg_send_document "$sum" "$(t m.xcaption "$id" \
+        "$(print -r -- "$req" | jq -r .forks)" "$(print -r -- "$req" | jq -r .hours)" \
+        "$(print -r -- "$req" | jq -r .parallel)")" >/dev/null 2>&1
+    else
+      tg_send_document "$sum" "$(t m.reqcaption "$id")" >/dev/null 2>&1
+    fi
     # A message_id-t eltesszuk: LEJARATKOR ebbol tudjuk levenni a gombokat
     # (ott nincs gombnyomas, amibol kiolvashatnank).
     # A figyelmeztetes a GOMBOS uzenetre kerul, nem (csak) a csatolmanyba: amit a

@@ -358,6 +358,21 @@ is   "a pozicionális prompt eldobva"  "$(restart_argv "$_B" S | grep -c 'Ez-egy
 _C='/Users/x/.local/bin/claude --remote-control a --worktree=a --brief'
 is   "a --worktree eldobva"           "$(restart_argv "$_C" S | grep -c 'worktree')" "0"
 
+print "\n\033[1mkill-utak: a fork-fát is takarítják\033[0m"
+# ⚠️ 2026-10-03: a `kill-one` (es a ra epulo `kill-tree`) nem vette ki a gyereket a
+# fork-fabol — egy eles proba utan egy halott fork ott maradt. Funkcionalisan merjuk,
+# izolalt fajlokkal, csonk tmux-szal (valodi session nem halhat meg).
+_KT=$(mktemp -d); mkdir -p "$_KT/live" "$_KT/bin"
+print '#!/bin/sh\nexit 0' > "$_KT/bin/tmux"; chmod +x "$_KT/bin/tmux"
+print '{"kt-gyerek-x":"kt-szulo","kt-masik":"kt-szulo"}' > "$_KT/tree.json"
+env PATH="$_KT/bin:$PATH" FORK_TREE="$_KT/tree.json" CLAUDE_AGENT_LIVE="$_KT/live" CLAUDE_AGENT_QUEUE="$_KT" \
+    zsh "$ROOT/bin/agent-kill-one.sh" kt-gyerek-x >/dev/null 2>&1
+is   "a kill-one kiveszi a fork-fából"    "$(jq -r '."kt-gyerek-x" // "nincs"' "$_KT/tree.json")" "nincs"
+is   "a többi bejegyzéshez nem nyúl"      "$(jq -r '."kt-masik" // "nincs"' "$_KT/tree.json")" "kt-szulo"
+rm -rf "$_KT"
+# A kill-all MINDEN agent-* sessiont kiloine — tesztben NEM futtathato. Ott a forrast nezzuk.
+yes_ "a kill-all is üríti a fork-fát" grep -q "print '{}' > \"\$FORK_TREE\"" "$ROOT/bin/agent-kill-all.sh"
+
 print "\n\033[1mkísérlet-felhatalmazás (xgrant)\033[0m"
 # Izolalt vilag: sajat allapot, sajat config, sajat tmux-sessionok a szulokre es a
 # gyerekekre. Az eles ~/.claude-hoz nem nyul.
@@ -524,8 +539,13 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
   # --- merfoldkovek: egyszer-egyszer, forkonkent nem
   jq '.xgrants.xg1.used = 10 | .xgrants.xg1.notified = [] | .xgrants.xg1.until = 9999999999' \
      "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  : > "$XG/bridge.log"
   _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_tick' >/dev/null 2>&1
-  is   "50%-nál a 25 és az 50 mérföldkő rögzül" "$(_xq '.xgrants.xg1.notified | sort | map(tostring) | join(",")')" "25,50"
+  is   "50%-nál a 25 és az 50 mérföldkő is rögzül" "$(_xq '.xgrants.xg1.notified | sort | map(tostring) | join(",")')" "25,50"
+  # ⚠️ ...DE CSAK EGY UZENET megy, a TENYLEGES aranyt mutatva. Az eles proban
+  # (2026-10-03) ket uzenet jott egyszerre, es az egyik azt irta: "25% — 1/2 fork".
+  is   "és egy körben csak EGY értesítés megy" "$(grep -c 'XGRANT-MILESTONE xg1' "$XG/bridge.log")" "1"
+  is   "a tényleges arányt mutatja (10/20 = 50%)" "$(grep -c 'XGRANT-MILESTONE xg1 50% (10/20' "$XG/bridge.log")" "1"
   _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_tick' >/dev/null 2>&1
   is   "és a második kör nem ismétli"           "$(_xq '.xgrants.xg1.notified | length')" "2"
   jq '.xgrants.xg1.until = 1' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
@@ -544,6 +564,24 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
   # A leallito gomb a teszt-csatornan is hasznalhato (a regresszios kor automatizalhato).
   yes_ "a leállító gomb a teszt-csatornán engedett" grep -q 'qa|qn|xs)' "$ROOT/bin/bridge-poller.sh"
 
+  # --- az eles proba (2026-10-03) harom UX-hibaja
+  # 1) a JOVAHAGYOTT uzenet eltuntette a szamokat (helyben atirodott egy rovidre)
+  _xa=$(env BRIDGE_LANG=hu zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t m.xapproved id kerv "a, b" 290 8 5 modell nem "2026-10-03 21:44"')
+  is   "a jóváhagyott üzenet megtartja a darabszámot" "$(print -r -- "$_xa" | grep -c '290 fork')" "1"
+  is   "és a lejáratot is kiírja"                      "$(print -r -- "$_xa" | grep -c '21:44')" "1"
+  # 2) a csatolmany felirata "Agent-inditasi keres" volt, szamok nelkul
+  _xc=$(env BRIDGE_LANG=hu zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t m.xcaption id 290 8 5')
+  is   "a kísérlet csatolmánya a kísérletet nevezi meg" "$(print -r -- "$_xc" | grep -c 'Kísérlet-felhatalmazás')" "1"
+  is   "és a számokat is mutatja"                       "$(print -r -- "$_xc" | grep -c '290 fork')" "1"
+  yes_ "a relay kísérletnél ezt a feliratot küldi" grep -q 't m.xcaption "$id"' "$ROOT/bin/bridge-relay.sh"
+  # 3) a szulok jovahagyasa nem mondta meg, KI kerte
+  is   "a queue-kapu jóváhagyása kiírja, ki kérte" \
+       "$(env BRIDGE_LANG=hu zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t m.qapproved nev mac-main' | grep -c 'kérte: <code>mac-main')" "1"
+  # ⚠️ ...es a kert-et az ATHELYEZES ELOTT olvassuk: a new/ alol a spawner azonnal elviheti.
+  is   "a kérte-mezőt a gated/ specből olvassa" "$(grep -c '_qrb=$(jq -r .\.requested_by // "?". "$gspec"' "$ROOT/bin/bridge-poller.sh")" "1"
+  # a masodik leallitas mar ne irjon at semmit
+  yes_ "a második leállító nyomás csak jelez" grep -q 'XGRANT-STOP-ALREADY' "$ROOT/bin/bridge-poller.sh"
+
   # --- a jovahagyo uzenet: MINDEN parameter rajta, mindket nyelven
   _xm=$(env BRIDGE_LANG=hu zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; t m.xask id kervenyezo "a, b" 290 8 5 claude-haiku-4-5 nem cel')
   # ⚠️ NEM `yes_ … print … | grep`: a cso a yes_-t ALHEJBA viszi, es a szamlaloja
@@ -557,7 +595,7 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
   rm -rf "$XG"; trap 'rm -rf "$TMP"' EXIT
 else
   print "  \033[33m⚠\033[0m tmux nincs — a kísérlet-felhatalmazás tesztjei kimaradnak"
-  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 57 ))
+  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 67 ))
 fi
 
 print "\n\033[1mkézbesítés-ellenőrzés: üres bizonyíték ≠ siker\033[0m"
@@ -1580,7 +1618,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=387}
+: ${SMOKE_EXPECTED:=400}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

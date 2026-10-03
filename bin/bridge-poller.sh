@@ -303,7 +303,13 @@ while read -r u; do
   # A `pending` OR ELE kerul, ugyanazert, mint a visszavonas: a gomb a
   # felhatalmazast ado keres id-jet viszi, az pedig mar `spawned`.
   if [[ "$action" == "xs" ]]; then
-    if xr=$(xgrant_get "$id"); then
+    # Tobb uzeneten is van leallito gomb (jovahagyas, merfoldkovek); a masodik
+    # nyomas mar ne irjon at semmit — csak mondja meg, es vegye le a gombot.
+    if xr=$(xgrant_get "$id") && [[ "$(print -r -- "$xr" | jq -r .stopped)" == true ]]; then
+      tg_answer_callback "$cbid" "$(t cb.xalready)" >/dev/null 2>&1
+      tg_clear_markup "$cqmid" >/dev/null 2>&1
+      blog "XGRANT-STOP-ALREADY $id"
+    elif xr=$(xgrant_get "$id"); then
       xgrant_stop "$id"
       tg_answer_callback "$cbid" "$(t cb.xstopped)" >/dev/null 2>&1
       _xm="$(t m.xstopped "$id" "$(print -r -- "$xr" | jq -r .used)" "$(print -r -- "$xr" | jq -r .forks)")"
@@ -347,6 +353,8 @@ while read -r u; do
       continue
     fi
     gname=$(jq -r '.name // "?"' "$gspec" 2>/dev/null)
+    # Az athelyezes ELOTT olvassuk: a `new/` alol a spawner azonnal elviheti.
+    _qrb=$(jq -r '.requested_by // "?"' "$gspec" 2>/dev/null)
     if [[ "$action" == "qn" ]]; then
       mv -f "$gspec" "${CLAUDE_AGENT_QUEUE}/failed/$id.json" 2>/dev/null
       print "elutasítva Telegramban (agent-indította kérés)" \
@@ -362,8 +370,8 @@ while read -r u; do
     if jq '.approved = true' "$gspec" > "$gspec.tmp" 2>/dev/null; then
       mv "$gspec.tmp" "${CLAUDE_AGENT_QUEUE}/new/$id.json" && rm -f "$gspec"
       tg_answer_callback "$cbid" "$(t cb.starting)" >/dev/null 2>&1
-      tg_edit_message "$cqmid" "$(t m.qapproved "$gname")" \
-        || tg_send_message "$(t m.qapproved "$gname")" >/dev/null 2>&1
+      tg_edit_message "$cqmid" "$(t m.qapproved "$gname" "$_qrb")" \
+        || tg_send_message "$(t m.qapproved "$gname" "$_qrb")" >/dev/null 2>&1
       blog "QUEUE-APPROVED $id name=$gname"
     else
       rm -f "$gspec.tmp"
@@ -443,8 +451,14 @@ while read -r u; do
           # a termek. A leallito gomb itt is ott van, nem csak a merfoldkoveknel.
           tg_answer_callback "$cbid" "$(t cb.started)" >/dev/null 2>&1
           _xk=$(jq -nc --arg i "$id" --arg s "$(t btn.xstop)" '{inline_keyboard:[[{text:$s,callback_data:("xs:" + $i)}]]}')
-          tg_edit_message "$cqmid" "$(t m.xapproved "$id")"$'\n'"<pre>$(print -r -- "$BRIDGE_LAST_OUT" | head -2)</pre>" "$_xk" >/dev/null 2>&1 \
-            || tg_send_message "$(t m.xapproved "$id")" "$_xk" >/dev/null 2>&1
+          _xr=$(xgrant_get "$id" 2>/dev/null)
+          _xg() { print -r -- "$_xr" | jq -r "$1" }
+          if [[ "$(_xg .no_ask)" == true ]]; then _xna="$(t m.xnoask_on)"; else _xna="$(t m.xnoask_off)"; fi
+          _xtxt="$(t m.xapproved "$id" "$(_xg .requested_by)" "$(_xg '.parents | join(", ")')" \
+                    "$(_xg .forks)" "$(_xg .hours)" "$(_xg .parallel)" "$(_xg .model)" "$_xna" \
+                    "$(bridge_grant_human "$(_xg .until)")")"
+          tg_edit_message "$cqmid" "$_xtxt" "$_xk" >/dev/null 2>&1 \
+            || tg_send_message "$_xtxt" "$_xk" >/dev/null 2>&1
           bridge_forget_msg "$id"
         else
           tg_answer_callback "$cbid" "$(t cb.started)${glab:+ (+$glab)}" >/dev/null 2>&1

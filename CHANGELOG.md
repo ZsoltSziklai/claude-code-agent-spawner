@@ -48,10 +48,36 @@ version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   assignments. They are in the catalogue now.
 - `tg_edit_message` takes an optional `reply_markup`, so a rewritten message can carry
   a new button (the experiment's Stop) instead of always losing its buttons.
+- **`kill-one` / `kill-tree` / `kill-all` left the child in the fork tree.** Only
+  `close-tree` removed it, so after a quick kill a dead fork stayed recorded — and a
+  later agent under the same name would inherit the old parent in the depth
+  calculation. Found during the live test below.
+
+### Verified live
+
+With the user pressing the real Telegram buttons: two test parents through the gate,
+one experiment request (2 forks, 1 hour, 1 parallel, haiku), approved. A fork under it
+started without a button press (`used: 1`, `grant=` in the log, the child running the
+approved model with `--disallowed-tools AskUserQuestion`); a second fork while the first
+was running was refused with **75**; the 50 % report arrived with a Stop button; after
+Stop, a new fork was refused even with the parallel slot free. The export shows the
+approver's Telegram account and both timestamps.
+
+The test also found three things the suite could not, all fixed in this release:
+
+- pressing Approve **rewrote the message and erased the numbers** — afterwards the chat
+  no longer showed what had been approved. The approved message now keeps every
+  parameter, plus the expiry;
+- the attachment's caption said **"Agent start request"** for an experiment, with no
+  numbers. It now names the experiment and shows them;
+- with 2 forks, one fork crossed two thresholds and **two reports arrived at once**, one
+  of them reading "25 % — 1/2 forks". Now one report per round, with the actual ratio.
+  And the two parents' approvals ("Approved, starting — name") did not say who had asked
+  — the user could not place them. They now show `requested by`.
 
 ### Changed
 
-- 387 assertions in the smoke test (was 329). The experiment tests use real throwaway
+- 400 assertions in the smoke test (was 329). The experiment tests use real throwaway
   tmux sessions for parents and children, and one test runs **six claims at once**
   against `parallel=2` to show the lock holds — exactly two succeed.
 
@@ -382,10 +408,37 @@ követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.
 - A `tg_edit_message` opcionális `reply_markup`-ot is átvesz, így egy átírt üzenet új
   gombot kaphat (a kísérlet Leállítás gombját), ahelyett hogy mindig elveszítené a
   gombjait.
+- **A `kill-one` / `kill-tree` / `kill-all` bent hagyta a gyereket a fork-fában.** Csak
+  a `close-tree` vette ki, így egy gyors kilövés után a halott fork rögzítve maradt —
+  és egy későbbi, azonos nevű agent a régi szülőt örökölte volna a mélységszámításban.
+  Az alábbi éles próba közben derült ki.
+
+#### Élesben igazolva
+
+A felhasználó valódi Telegram-gombnyomásaival: két teszt-szülő a kapun át, egy
+kísérlet-kérés (2 fork, 1 óra, 1 párhuzamos, haiku), jóváhagyva. Alatta egy fork
+gombnyomás nélkül indult (`used: 1`, `grant=` a naplóban, a gyerek a jóváhagyott
+modellel és `--disallowed-tools AskUserQuestion`-nel fut); egy második fork az első
+futása közben **75**-tel visszautasítva; az 50%-os jelentés Leállítás gombbal megjött;
+leállítás után új fork akkor sem indult, amikor a párhuzamos hely felszabadult. Az
+exportban ott a jóváhagyó Telegram-fiókja és mindkét időbélyeg.
+
+A próba három olyan dolgot is talált, amit a teszt nem tudott — mind javítva ebben a
+kiadásban:
+
+- az Engedélyezem gomb **átírta az üzenetet, és eltüntette a számokat** — utána a
+  chatben már nem látszott, mit hagytál jóvá. A jóváhagyott üzenet mostantól megtart
+  minden paramétert, plusz a lejáratot;
+- a csatolmány felirata kísérletnél is **„Agent-indítási kérés"** volt, számok nélkül.
+  Mostantól a kísérletet nevezi meg, a számokkal;
+- 2 forknál egyetlen fork két küszöböt lépett át, és **két jelentés jött egyszerre**,
+  az egyik azt írta: „25% — 1/2 fork". Mostantól körönként egy jelentés, a tényleges
+  aránnyal. És a két szülő jóváhagyása („Jóváhagyva, indul — név") nem mondta meg, ki
+  kérte — a felhasználó nem tudta hova tenni. Mostantól kiírja: `kérte:`.
 
 #### Változott
 
-- 387 állítás a füst-tesztben (eddig 329). A kísérlet-tesztek valódi, eldobható
+- 400 állítás a füst-tesztben (eddig 329). A kísérlet-tesztek valódi, eldobható
   tmux-sessionöket használnak a szülőkre és a gyerekekre, és egy teszt **hat
   foglalást indít egyszerre** `parallel=2` mellett, hogy megmutassa: a zár tart —
   pontosan kettő sikerül.

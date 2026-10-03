@@ -23,6 +23,9 @@ done < <(list_running_agents)
 # already gone. Otherwise the child watchdog would resurrect them after a
 # deliberate kill-all.
 rm -f "$CLAUDE_AGENT_LIVE"/*.json 2>/dev/null
+# A fork-fa is: mindegyik gyerek halott, egy bent maradt el a kesobbi
+# melysegszamitast torzitana (lasd agent-kill-one.sh).
+[[ -n "${FORK_TREE:-}" ]] && print '{}' > "$FORK_TREE" 2>/dev/null
 
 echo "all agents killed ($COUNT)"
 

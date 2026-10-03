@@ -106,6 +106,7 @@ BRIDGE_MSG=(
   cb.stale       'Ez a kérés már nem függőben.|This request is no longer pending.'
   cb.revoked     'Visszavonva.|Revoked.'
   cb.xstopped    'Leállítva — új fork nem indul.|Stopped — no new forks.'
+  cb.xalready    'Már le volt állítva.|It was already stopped.'
   cb.xnotfound   'Ilyen felhatalmazás nincs (vagy már leállt).|No such authorisation (or it already stopped).'
   cb.notfound    'Nem találom, melyik agentről van szó.|Cannot tell which agent this is.'
   cb.denied      'Nem engedélyezett.|Not allowed.'
@@ -146,7 +147,11 @@ BRIDGE_MSG=(
   # Kiserlet-felhatalmazas. A JOVAHAGYO uzenet MINDEN parametert tartalmaz: a
   # dontes ezekrol szol, es ami csak a csatolmanyban van, azt a telefonon nem latod.
   m.xask        '🧪 <b>Kísérlet-felhatalmazás</b> — <code>%s</code>\nkérvényező: <code>%s</code>\nszülők: <code>%s</code>\n<b>%s fork</b> · <b>%s óra</b> · <b>%s párhuzamosan</b>\nmodell: <code>%s</code> · visszakérdezés: %s\n%s\nEngedélyezed?|🧪 <b>Experiment authorisation</b> — <code>%s</code>\nrequested by: <code>%s</code>\nparents: <code>%s</code>\n<b>%s forks</b> · <b>%s hours</b> · <b>%s in parallel</b>\nmodel: <code>%s</code> · asking back: %s\n%s\nApprove?'
-  m.xapproved   '✅ <b>Kísérlet engedélyezve</b> — <code>%s</code>|✅ <b>Experiment approved</b> — <code>%s</code>'
+  # ⚠️ A JOVAHAGYOTT uzenet MEGTARTJA a parametereket. Az elso valtozat helyben
+  # atirta a gombos uzenetet egy rovid "engedelyezve"-re, es ezzel ELTUNTETTE, mire
+  # mondtal igent — a felhasznalo a chatben mar nem latta a szamokat (2026-10-03).
+  m.xapproved   '✅ <b>Kísérlet engedélyezve</b> — <code>%s</code>\nkérvényező: <code>%s</code>\nszülők: <code>%s</code>\n<b>%s fork</b> · <b>%s óra</b> · <b>%s párhuzamosan</b>\nmodell: <code>%s</code> · visszakérdezés: %s\nlejár: <b>%s</b>|✅ <b>Experiment approved</b> — <code>%s</code>\nrequested by: <code>%s</code>\nparents: <code>%s</code>\n<b>%s forks</b> · <b>%s hours</b> · <b>%s in parallel</b>\nmodel: <code>%s</code> · asking back: %s\nexpires: <b>%s</b>'
+  m.xcaption    '🧪 <b>Kísérlet-felhatalmazás</b> — <code>%s</code> · %s fork · %s óra · %s párhuzamosan|🧪 <b>Experiment authorisation</b> — <code>%s</code> · %s forks · %s hours · %s in parallel'
   m.xmilestone  '🧪 <code>%s</code>: <b>%s%%</b> — %s/%s fork elindult, most %s fut. Lejár: %s|🧪 <code>%s</code>: <b>%s%%</b> — %s/%s forks started, %s running now. Expires: %s'
   m.xexpired    '⌛️ <b>Kísérlet-felhatalmazás lejárt</b> — <code>%s</code> (%s/%s fork indult el)|⌛️ <b>Experiment authorisation expired</b> — <code>%s</code> (%s/%s forks started)'
   m.xstopped    '🛑 <b>Kísérlet leállítva</b> — <code>%s</code>: új fork nem indul (%s/%s indult el). A futók folytatják.|🛑 <b>Experiment stopped</b> — <code>%s</code>: no new forks (%s/%s started). Running ones continue.'
@@ -182,7 +187,9 @@ BRIDGE_MSG=(
   m.nudgenote    'Ha döntésre várt, most a jelentésébe fogja írni.|If it was waiting on a decision, it will now write it into its report.'
   m.nudgefail    '⚠️ Az emlékeztetőt nem sikerült elküldeni — az agent már nem fut.|⚠️ Could not send the reminder — the agent is no longer running.'
   m.qrejected    '✖️ <b>Elutasítva</b> — <code>%s</code>|✖️ <b>Rejected</b> — <code>%s</code>'
-  m.qapproved    '▶️ <b>Jóváhagyva, indul</b> — <code>%s</code>|▶️ <b>Approved, starting</b> — <code>%s</code>'
+  # A jovahagyott uzenet mondja meg, KI kerte: kulonben utolag nem derul ki, mire
+  # mondtal igent (2026-10-03: a felhasznalo nem tudta hova tenni a ket "Jóváhagyva"-t).
+  m.qapproved    '▶️ <b>Jóváhagyva, indul</b> — <code>%s</code> · kérte: <code>%s</code>|▶️ <b>Approved, starting</b> — <code>%s</code> · requested by: <code>%s</code>'
   m.grantfail    '⚠️ A felhatalmazást nem sikerült beállítani (nincs cél-agent).|⚠️ Could not set the authorisation (no target agent).'
 )
 
@@ -606,18 +613,26 @@ xgrant_tick() {
     fi
     (( forks > 0 )) || continue
     pct=$(( used * 100 / forks ))
+    # ⚠️ EGY KORBEN EGY UZENET. Kis darabszamnal egyetlen fork tobb kuszobot is
+    # atlep (2 forkbol 1 = 25 ES 50), es az elso valtozat mindegyikrol kulon
+    # szolt — raadasul a kuszobot irta ki a tenyleges arany mellett: "25% — 1/2
+    # fork" (2026-10-03, eles proba). Mostantol: az OSSZES atlepett kuszob
+    # rogzul, de csak EGY uzenet megy, es az a TENYLEGES aranyt mutatja.
+    local -a newm=()
     for m in 25 50 75 100; do
       (( pct >= m )) || continue
       print -r -- "$r" | jq -e --argjson m "$m" '.notified | index($m)' >/dev/null && continue
-      state_edit "$BRIDGE_STATE" --arg i "$id" --argjson m "$m" '.xgrants[$i].notified += [$m]'
-      running=$(xgrant_running "$r")
-      if tg_ready; then
-        mk=$(jq -nc --arg i "$id" --arg s "$(t btn.xstop)" \
-               '{inline_keyboard:[[{text:$s,callback_data:("xs:" + $i)}]]}')
-        tg_send_message "$(t m.xmilestone "$id" "$m" "$used" "$forks" "$running" "$(bridge_grant_human "$until")")" "$mk" >/dev/null 2>&1
-      fi
-      blog "XGRANT-MILESTONE $id $m% ($used/$forks, fut: $running)"
+      newm+=("$m")
     done
+    (( ${#newm} )) || continue
+    state_edit "$BRIDGE_STATE" --arg i "$id" --argjson ms "[${(j:,:)newm}]" '.xgrants[$i].notified += $ms'
+    running=$(xgrant_running "$r")
+    if tg_ready; then
+      mk=$(jq -nc --arg i "$id" --arg s "$(t btn.xstop)" \
+             '{inline_keyboard:[[{text:$s,callback_data:("xs:" + $i)}]]}')
+      tg_send_message "$(t m.xmilestone "$id" "$pct" "$used" "$forks" "$running" "$(bridge_grant_human "$until")")" "$mk" >/dev/null 2>&1
+    fi
+    blog "XGRANT-MILESTONE $id $pct% ($used/$forks, fut: $running, küszöb: ${(j:,:)newm})"
   done
 }
 
