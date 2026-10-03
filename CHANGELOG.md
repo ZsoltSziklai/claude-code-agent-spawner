@@ -5,6 +5,27 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] — 2026-10-03
+
+### Fixed
+
+- **The Desktop skill described the bridge wrongly in four places.** It still said
+  that a fork *inherits the parent's conversation* and that `resume` defaults to
+  `full` — but since 2026-08-31 the default is `none`: a fresh session that knows
+  only its task (changed after a child continued its parent's role instead of doing
+  its job). The Desktop acts on what the skill says, so it wrote short tasks that
+  leaned on context the child never received. It also said a duplicate request id is
+  *ignored*; since v1.0.1 it is `rejected`, and the user is told.
+
+### Added
+
+- **The skill now covers experiment authorisation** (v1.5.0): when to file one, the
+  request format, why the numbers must be right before filing (the user approves the
+  package as it is), and exactly what to hand the executing agent — including the
+  full, spelled-out `agent-exp-fork` path the sandbox exclusion requires.
+- **`agent-bridge.zip` is attached to the release**, ready to upload in Claude Desktop
+  (Settings → Capabilities → Skills → Upload). Replace the old version when upgrading.
+
 ## [1.5.0] — 2026-10-03
 
 ### Added
@@ -363,6 +384,29 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.5.1] — 2026-10-03
+
+#### Javítva
+
+- **A Desktop-skill négy helyen rosszul írta le a hidat.** Még mindig azt állította,
+  hogy a fork *örökli a szülő beszélgetését*, és hogy a `resume` alapértéke `full` —
+  pedig 2026-08-31 óta `none`: friss session, ami csak a saját feladatát ismeri
+  (miután egy gyerek a feladata helyett a szülője szerepét folytatta). A Desktop azt
+  követi, amit a skill mond, ezért rövid, kontextusra támaszkodó feladatokat írt —
+  olyan kontextusra, amit a gyerek sosem kapott meg. Azt is állította, hogy a
+  duplikált kérés-azonosítót *figyelmen kívül hagyjuk*; a v1.0.1 óta `rejected`, és a
+  felhasználó értesítést kap.
+
+#### Hozzáadva
+
+- **A skill mostantól leírja a kísérlet-felhatalmazást** (v1.5.0): mikor kell, a kérés
+  formátuma, miért kell a számoknak a beadás előtt stimmelniük (a felhasználó a
+  csomagot úgy hagyja jóvá, ahogy van), és pontosan mit kell átadni a végrehajtó
+  agentnek — a homokozó-kivételhez szükséges, kiírt `agent-exp-fork` útvonallal együtt.
+- **Az `agent-bridge.zip` a kiadáshoz csatolva**, feltöltésre készen a Claude
+  Desktopba (Beállítások → Képességek → Skillek → Feltöltés). Frissítéskor a régit
+  cseréld le.
 
 ### [1.5.0] — 2026-10-03
 
@@ -730,3 +774,4 @@ jóváhagyással.
 [1.3.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.3.0
 [1.4.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.4.0
 [1.5.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.0
+[1.5.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.1

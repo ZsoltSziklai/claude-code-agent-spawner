@@ -192,10 +192,12 @@ for L in local.bridge-relay local.bridge-poller; do
 done
 ```
 
-**On the Claude Desktop side**, install `desktop-skill/agent-bridge/SKILL.md` as a
-skill (Settings → Capabilities → Skills → upload), and give the Desktop agent
-access to the folder that contains `bridge/` — that mounted folder is the entire
-channel.
+**On the Claude Desktop side**, upload the skill: download `agent-bridge.zip` from
+the latest release (or zip the `desktop-skill/agent-bridge/` folder yourself) and
+add it under Settings → Capabilities → Skills → Upload. **When upgrading, replace
+the old version** — an outdated skill describes the bridge wrongly, and the Desktop
+acts on what the skill says. Then give the Desktop agent access to the folder that
+contains `bridge/` — that mounted folder is the entire channel.
 
 ### The JSON spec
 
@@ -588,10 +590,12 @@ for L in local.bridge-relay local.bridge-poller; do
 done
 ```
 
-**A Claude Desktop oldalán** telepítsd a `desktop-skill/agent-bridge/SKILL.md`-t
-skillként (Beállítások → Képességek → Skillek → feltöltés), és add meg a Desktop
-agentnek a `bridge/`-et tartalmazó mappa elérését — az a csatolt mappa maga a
-teljes csatorna.
+**A Claude Desktop oldalán** töltsd fel a skillt: a legutóbbi kiadásból töltsd le az
+`agent-bridge.zip`-et (vagy csomagold be magad a `desktop-skill/agent-bridge/`
+mappát), és add hozzá: Beállítások → Képességek → Skillek → Feltöltés. **Frissítéskor
+cseréld le a régit** — az elavult skill rosszul írja le a hidat, és a Desktop azt
+követi, amit a skill mond. Utána add meg a Desktop agentnek a `bridge/`-et tartalmazó
+mappa elérését — az a csatolt mappa maga a teljes csatorna.
 
 #### A JSON spec
 
