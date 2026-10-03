@@ -86,61 +86,51 @@ is   "4320 perc"                        "$(bridge_dur_human 4320)" "3 napja"
 is   "a lejárat-formázó nem üresen tér vissza" "$([[ -n "$(bridge_grant_human $(date -u +%s))" ]] && print ok)" "ok"
 
 print "\n\033[1mvalidátorok (a spawner fehérlistái)\033[0m"
-# A harom validator listajanak EGYEZNIE kell — ez a teszt fogja meg, ha egy uj
-# modell csak az egyik helyre kerul be (haromszor tortent meg).
-#
-# ⚠️ A `case`-AGAKBAN kell keresni, nem az egesz fajlban: a modellnevek a
-# kommentekben is szerepelnek, tehat egy fajl-szintu grep akkor is zold lenne,
-# ha valaki a modellt kiveszi a fehérlistabol, de a kommentet ottfelejti — pont
-# azt a hibat nem fogna meg, ami miatt ez a teszt keszult.
+# ⚠️ EZ A SZAKASZ ATIRODOTT 2026-10-03-AN. Korabban azt mertuk, hogy a HAROM
+# kulon `case`-lista AZONOS — vagyis a teszt a haromszoros szerkezetet orizte, azt
+# a szerkezetet, ami haromszor csuszott szet. Mostantol EGY forras van
+# (`bin/_models.sh`), es azt merjuk:
+#   a) egyik validatornak NINCS sajat listaja,
+#   b) mindharom a kozos `agent_model_valid`-ot hivja,
+#   c) a fuggveny viselkedese helyes (funkcionalisan, nem mintaval).
+# ⚠️ A `case`-AGAKBAN kell keresni, nem az egesz fajlban: a nevek a kommentekben
+# is szerepelnek, tehat egy fajl-szintu grep akkor is zold lenne, ha valaki kiveszi
+# az erteket a fehérlistabol, de a kommentet ottfelejti. A permission-listak MEG
+# harom kulon `case`-ben allnak, ezert ez a segito tovabbra is kell.
 case_arms() {                        # $1 = fajl -> csak a case-agak sorai
-  # ⚠️ A vezeto APOSZTROF is megengedett: a `[1m]`-valtozatok idezojelben allnak
-  # (`'claude-opus-5[1m]') ;;`), es az elso valtozat regexe ezeket kihagyta —
-  # a spawner ket modellje igy lathatatlan volt a tesztnek.
+  # ⚠️ A vezeto APOSZTROF is megengedett: az idezojeles alternativakat az elso
+  # valtozat regexe kihagyta, es igy ket ertek lathatatlan volt a tesztnek.
   grep -E "^[[:space:]]*'?[a-zA-Z0-9_-]+[^#]*\)[[:space:]]*;;" "$1" 2>/dev/null
 }
-# A case-agakbol CSAK a modell-alternativak. A szuro nem elhagyhato: a spawner
-# ugyanilyen alaku case-blokkal validalja az effortot es a permission-modot is,
-# a hid es a fork-agent viszont nem — szures nelkul harom kulonbozo halmazt
-# hasonlitanank ossze, es a teszt vagy mindig bukna, vagy (ahogy az elso
-# valtozatban) csendben zoldet adna.
-model_set() {                        # $1 = fajl -> egy modellnev soronkent
-  case_arms "$1" \
-    | sed "s/)[[:space:]]*;;.*//; s/^[[:space:]]*//" \
-    | tr '|' '\n' \
-    | sed "s/^'//; s/'\$//; s/^[[:space:]]*//; s/[[:space:]]*\$//" \
-    | grep -E '^(claude-[a-z0-9.-]+(\[1m\])?|opus|sonnet|haiku|fable)$' \
-    | sort -u
-}
 VALIDATORS=("$ROOT/claude-agent-spawner" "$ROOT/bin/_bridge-lib.sh" "$ROOT/bin/fork-agent")
-
-# 1. A nevesitett modellek mind a haromban ott vannak.
-for m in claude-opus-5 claude-sonnet-5 claude-fable-5 claude-haiku-4-5 opus fable; do
-  n=0
-  for f in "${VALIDATORS[@]}"; do
-    # TELJES case-alternativara illesztunk, nem substringre: a puszta `fable`
-    # benne van a `claude-fable-5`-ben, tehat a substring-kereses akkor is zold
-    # volt, ha az aliast kivettuk a fehérlistabol.
-    case_arms "$f" | grep -qE "(^|[|( 	'\"])${m}([|)'\"]|\$)" && (( n++ ))
-  done
-  is "a(z) $m mind a 3 validátor case-ágában ott van" "$n" "3"
+for f in "${VALIDATORS[@]}"; do
+  is "nincs saját modell-lista: ${f:t}" \
+     "$(grep -c 'opus|sonnet|haiku|fable' "$f")" "0"
+  yes_ "a közös validátort hívja: ${f:t}" \
+       grep -q 'agent_model_valid' "$f"
 done
-
-# 2. ...es a HAROM HALMAZ AZONOS. Ez az elozonel tobb: egy UJ modell is
-# elbuktatja, ha csak az egyik helyre kerul be — pontosan ez a hibaminta
-# ismetlodott haromszor. A nevesitett lista ezt nem fogja meg, mert fix
-# neveket keres.
-sp=$(model_set "${VALIDATORS[1]}")
-is "a spawner fehérlistája nem üres" "$([[ -n "$sp" ]] && print ok)" "ok"
-for f in "${VALIDATORS[2]}" "${VALIDATORS[3]}"; do
-  other=$(model_set "$f")
-  if [[ "$sp" == "$other" ]]; then
-    ok "a modell-fehérlista azonos: ${VALIDATORS[1]:t} vs ${f:t}"
-  else
-    bad "a modell-fehérlista azonos: ${VALIDATORS[1]:t} vs ${f:t}" \
-        "csak az egyikben: $(print -r -- "$sp"$'\n'"$other" | sort | uniq -u | tr '\n' ' ')"
-  fi
+# A lista tartalma — a 2026-10-03-i meres szerint. Mindegyik id-t a CLI-vel
+# probaltuk (`--print 'ok'`), nem a binaris `strings`-jebol vettuk: ott olyan is
+# van, amihez a fiok nem fer hozza (`claude-fable-5-mythos-5` -> unrecognized_model).
+for m in claude-opus-5-5 claude-sonnet-5-5 claude-fable-5-1 claude-opus-5 \
+         claude-sonnet-5 claude-fable-5 claude-haiku-4-5 claude-opus-4-8 claude-opus-4-7; do
+  yes_ "érvényes: $m"            agent_model_valid "$m"
+  # ⚠️ A `[1m]` utotag MINDEN megadason mukodik (13 kombinacio lemerve) — korabban
+  # csak az Opus/Sonnet rogzitett id-jein volt engedve, tehat a `/fork --model
+  # 'opus[1m]'` ervenyes kerest utasitott el.
+  yes_ "érvényes 1M-mel: ${m}[1m]" agent_model_valid "${m}[1m]"
 done
+for a in opus sonnet haiku fable; do
+  yes_ "alias érvényes: $a"            agent_model_valid "$a"
+  yes_ "alias érvényes 1M-mel: ${a}[1m]" agent_model_valid "${a}[1m]"
+done
+# ⚠️ A hamis iranyt is merni kell, kulonben egy mindig-igaz fuggveny is zold lenne.
+no_  "elutasít ismeretlen modellt"   agent_model_valid claude-nincs-ilyen-9
+no_  "elutasítja a mythost (nincs hozzáférés)" agent_model_valid claude-fable-5-mythos-5
+no_  "elutasít üres megadást"        agent_model_valid ""
+no_  "elutasít részleges nevet"      agent_model_valid claude-opus
+no_  "a [1m] nem tesz érvényessé rosszat" agent_model_valid 'claude-nincs[1m]'
+
 
 # 3. Ugyanez a drift-osztaly a PERMISSION-listakra. 2026-08-29-ig ez nem volt
 # kockazat (a hid fixen "auto"-t irt), de amiota a keres kerhet modot, mind a
@@ -1291,7 +1281,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=285}
+: ${SMOKE_EXPECTED:=314}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

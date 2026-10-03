@@ -2,6 +2,8 @@
 # _bridge-lib.sh — közös réteg a Desktop-hídhoz (relay + poller).
 # Source-old: source "$(dirname "${(%):-%x}")/_bridge-lib.sh"
 
+source "$(dirname "${(%):-%x}")/_models.sh"   # modell-fehérlista, EGY forrás
+
 : ${CLAUDE_AGENT_ROOT:=$HOME/ClaudeProjects}
 : ${CLAUDE_AGENT_QUEUE:=$HOME/.claude/agent-queue}
 : ${BRIDGE_DIR:=$CLAUDE_AGENT_ROOT/bridge}
@@ -830,15 +832,9 @@ validate_request() {                 # $1 = kérés-fájl
   # ALIAS, nem rogzitett azonosito: a CLI sugoja szerint az alias mindig A
   # LEGFRISSEBB modellt jelenti, tehat verziovaltaskor nem avul el.
   model=$(jq -r '.model // "opus"' "$f")
-  case "$model" in
-    # ⚠️ A harom validator (spawner, hid, fork-agent) LISTAJANAK EGYEZNIE KELL.
-    # 2026-08-26: csak a spawner kapta meg a Claude 5 csaladot, igy egy hid-keres
-    # vagy /fork a TENYLEGESEN hasznalt `claude-opus-5`-tel elutasitasra kerult.
-    opus|sonnet|haiku|fable) ;;
-    claude-opus-4-7|claude-opus-4-8|'claude-opus-4-7[1m]'|'claude-opus-4-8[1m]') ;;
-    claude-opus-5|claude-sonnet-5|claude-fable-5|claude-haiku-4-5|'claude-opus-5[1m]'|'claude-sonnet-5[1m]') ;;
-    *) print -u2 "érvénytelen model: $model"; return 1;;
-  esac
+    # EGY FORRAS: a lista a `bin/_models.sh`-ban el (lasd ott a miert-et). A
+    # harom kulon `case` tobbszor szetcsuszott; a komment nem akadalyozta meg.
+    agent_model_valid "$model" || { print -u2 "érvénytelen model: $model"; return 1 }
   effort=$(jq -r '.effort // "high"' "$f")
   case "$effort" in low|medium|high|xhigh|max) ;; *) print -u2 "érvénytelen effort: $effort"; return 1;; esac
   # ALAPERTELMEZES: worktree. Az izolacio a jobb default -- a gyerek sajat agon
