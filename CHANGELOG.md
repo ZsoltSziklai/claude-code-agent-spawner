@@ -5,6 +5,39 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] — 2026-10-04
+
+### Fixed
+
+- **Haiku silently fell out of `auto` mode — and an unattended Haiku agent would
+  hang forever.** Claude Code does not support `auto` for Haiku: it switches to
+  `manual` with the note "auto mode unavailable for this model" (measured on CLI
+  2.1.289 with a throwaway session: Opus 5.5 → `auto mode on`, Haiku 4.5 →
+  `manual mode on`; the CLI source gates it in `FK()`). `manual` asks before every
+  tool use, and on a bridge-started or experiment fork nobody reads the question —
+  so the agent stops at its first tool call. An experiment planned 290 Haiku forks;
+  every one would have stalled. Reported by the experiment's executor.
+  We do not switch modes silently ourselves — the CLI already does, and that is the
+  problem. Instead the spawner, the bridge, `fork-agent` and the experiment
+  authorisation **reject** Haiku with `auto`, and the message says what to choose:
+  `dontAsk` for unattended work (it refuses what is not allowed instead of waiting),
+  `manual` if someone answers. The rule lives in one place (`bin/_models.sh`,
+  mirroring the CLI's `FK()`), the experiment request takes a `permission_mode` that
+  every child runs in, and a fork under an authorisation must match it.
+- **`agent-grant-export` counted other authorisations' forks.** It matched
+  `grant=$id` as a *prefix*, so `opus5`'s export also counted `opus55`'s forks. The
+  suggested `grep -E " grant=${id}( |$)"` would not have been enough either: an
+  authorisation id may contain a dot, which a regex reads as *any character* — the
+  `opus.5` pattern matched `opus55` and `opusX5` (measured, and caught by a mutation
+  test). The export now compares the `grant=` field **exactly**, with no regex.
+
+### Changed
+
+- The Desktop skill, `bridge-README` and the `/new-agent` wizard describe the Haiku
+  rule. **The Desktop skill changed — replace it again** (`agent-bridge.zip` is
+  attached to this release).
+- 422 assertions in the smoke test (was 400).
+
 ## [1.5.1] — 2026-10-03
 
 ### Fixed
@@ -384,6 +417,40 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.5.2] — 2026-10-04
+
+#### Javítva
+
+- **A Haiku csendben kiesett az `auto` módból — és egy felügyelet nélküli Haiku-agent
+  örökre elakadt volna.** A Claude Code a Haikunál nem támogatja az `auto` módot:
+  `manual`-ra vált, „auto mode unavailable for this model" megjegyzéssel (mérve a
+  2.1.289-es CLI-n eldobható sessionnel: Opus 5.5 → `auto mode on`, Haiku 4.5 →
+  `manual mode on`; a CLI forrásában az `FK()` függvény kapuzza). A `manual` minden
+  eszközhasználat előtt kérdez, és egy hídon vagy kísérletben indított forknál ezt
+  senki nem olvassa — vagyis az agent az első eszközhívásánál megáll. Egy kísérlet
+  290 Haiku-forkot tervezett; mindegyik elakadt volna. A kísérlet végrehajtója jelezte.
+  Mi magunk nem váltunk csendben módot — a CLI már megteszi, és pont az a baj. Ehelyett
+  a spawner, a híd, a `fork-agent` és a kísérlet-felhatalmazás **elutasítja** a Haikut
+  `auto` móddal, és az üzenet megmondja, mit válassz: felügyelet nélkül `dontAsk`
+  (amit nem engedtél, azt elutasítja, ahelyett hogy várna), `manual`, ha valaki
+  válaszol. A szabály egy helyen él (`bin/_models.sh`, a CLI `FK()`-ját tükrözve), a
+  kísérlet-kérés `permission_mode`-ot is kap, amiben minden gyerek fut, és a
+  felhatalmazás alatti forknak ezzel egyeznie kell.
+- **Az `agent-grant-export` más felhatalmazások forkjait is beszámolta.** A
+  `grant=$id`-t *prefixként* illesztette, így az `opus5` exportja az `opus55` forkjait
+  is számolta. A javasolt `grep -E " grant=${id}( |$)"` sem lett volna elég: a
+  felhatalmazás-azonosítóban lehet pont, amit a regex *bármilyen karakternek* olvas — az
+  `opus.5` minta az `opus55`-re és az `opusX5`-re is illeszkedett (mérve, és egy
+  mutációs teszt is megfogja). Az export mostantól a `grant=` mezőt **pontosan**
+  hasonlítja, regex nélkül.
+
+#### Változott
+
+- A Desktop-skill, a `bridge-README` és a `/new-agent` varázsló leírja a Haiku-szabályt.
+  **A Desktop-skill megváltozott — cseréld le újra** (az `agent-bridge.zip` a kiadáshoz
+  csatolva).
+- 422 állítás a füst-tesztben (eddig 400).
 
 ### [1.5.1] — 2026-10-03
 
@@ -775,3 +842,4 @@ jóváhagyással.
 [1.4.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.4.0
 [1.5.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.0
 [1.5.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.1
+[1.5.2]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.2

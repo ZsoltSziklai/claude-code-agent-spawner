@@ -187,6 +187,10 @@ for spec in "$NEW_DIR"/*.json; do
     auto|acceptEdits|plan|dontAsk|manual|bypassPermissions) ;;
     *) fail_spec "$proc_path" "$uuid" "invalid permission_mode: $pm"; continue;;
   esac
+  # Haiku + auto -> a CLI csendben manual-ra valt (lasd _models.sh).
+  if ! _pmerr=$(agent_perm_check "$model" "$pm" 2>&1); then
+    fail_spec "$proc_path" "$uuid" "$_pmerr"; continue
+  fi
 
   # worktree=true csak git repo-ban használható (claude --worktree git-et vár)
   if [[ "$worktree" == "true" ]]; then

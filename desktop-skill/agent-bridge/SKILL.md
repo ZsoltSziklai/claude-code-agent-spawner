@@ -195,7 +195,7 @@ characters, `A-Za-z0-9._-` only (it has to fit in a Telegram button).
 | `worktree` | no | **default `true`**; set `false` only if the task needs the parent's uncommitted work |
 | `model` | no | **default `opus`**. An alias (`opus` / `sonnet` / `haiku` / `fable`) always means the *latest* model of that family, so prefer it. Pin an id only when you deliberately want a fixed version: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7` (optional `[1m]` suffix on any of them, aliases included) |
 | `effort` | no | `low` … `max` |
-| `permission_mode` | no | **default `auto`**. Also `acceptEdits`, `plan`, `dontAsk`, `manual`, `bypassPermissions` — see the note below before asking for the last one |
+| `permission_mode` | no | **default `auto`**. Also `acceptEdits`, `plan`, `dontAsk`, `manual`, `bypassPermissions` — see the note below before asking for the last one. **Haiku cannot use `auto`** — give it `dontAsk` (unattended) or `manual`, or the request is rejected |
 | `resume` | no | fork only. **default `none`** — a fresh session that knows only your `task`. `summary` / `full` pass on the parent's conversation; ask for them only deliberately. See below |
 | `cwd` | no | relative to `~/ClaudeProjects`; defaults to the parent's |
 
@@ -289,6 +289,7 @@ by the executing agent, through the normal gate.
   "parallel":     5,
   "model":        "claude-haiku-4-5-20251001",
   "no_ask":       true,
+  "permission_mode": "dontAsk",
   "purpose":      "role-continuity pilot, protocol v3"
 }
 ```
@@ -302,7 +303,10 @@ by the executing agent, through the normal gate.
 | `parallel` | **yes** | how many may run at once (≤ `forks`) |
 | `model` | **yes** | one specific model; dated ids work (`claude-haiku-4-5-20251001`) — a measurement should not use an alias, because aliases move |
 | `no_ask` | no | default `true` — every child gets `--no-ask` |
+| `permission_mode` | no | default `auto` — every child runs in it. **Required for Haiku** (see below) |
 | `purpose` | no | ≤ 500 bytes; shown to the user on the approval message |
+
+⚠️ **Haiku cannot run in `auto` mode**: the CLI silently switches it to `manual` ("auto mode unavailable for this model"), and an unattended agent then stops at its first permission prompt — forever. A Haiku request without an explicit mode is therefore rejected. Use `dontAsk` for unattended work (it refuses what is not allowed instead of waiting), `manual` only if someone answers.
 
 **Get the numbers right before you file.** The user approves or rejects the
 package as it is — there is no "approve, but only 50" button. A request above the

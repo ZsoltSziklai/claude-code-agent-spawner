@@ -234,6 +234,12 @@ Feldolgozás:
      és a "child claude exited within 3s (check flags / auth)" hibaüzenet
      auth-problémára terelte a gyanút. -->
 
+⚠️ **Haiku esetén az `auto` nem választható.** A CLI csendben `manual`-ra váltaná
+(„auto mode unavailable for this model"), és a spawner az ilyen specet elutasítja.
+Ha a 4a-ban Haikut választottak és itt `auto` jön, chat-ben kérdezz vissza: *„A Haiku
+nem fut auto módban. Felügyelet nélkül a dontAsk ajánlott (amit nem engedtél, azt
+elutasítja), vagy manual, ha te válaszolsz a kérdéseire. Melyik legyen?"*
+
 Ha a `auto`-val JSON-write blokkolva (classifier), ne kínálj alternatíva-pickert, hanem chat-ben kérdezz hogy a 6 közül melyiket írj helyette.
 
 

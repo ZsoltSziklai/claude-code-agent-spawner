@@ -60,3 +60,32 @@ agent_model_valid() {
   fi
   return 1
 }
+
+# Tamogatja-e a modell az AUTO jogosultsagi modot?
+#
+# ⚠️⚠️ A HAIKU NEM. A CLI ilyenkor CSENDBEN MANUAL modra valt: "auto mode
+# unavailable for this model" -> "⏸ manual mode on" (merve 2026-10-04, CLI 2.1.289,
+# eldobhato sessionnel; ugyanabban a probaban az Opus 5.5 "auto mode on"-t adott).
+# A manual mod minden eszkozhasznalat elott engedelyt ker — egy hidon vagy
+# kiserletben inditott agentnel ezt SENKI nem olvassa, tehat az elso eszkozhivasnal
+# OROKRE megall. Egy kiserlet futtatoja vette eszre; a tervezett 290 Haiku-fork
+# mindegyike elakadt volna.
+# A szabaly a CLI `FK()` fuggvenyet tukrozi: haiku, claude-opus-4-6,
+# claude-sonnet-4-6 -> nem. Ha a CLI valtoztat rajta, itt kell kovetni.
+agent_model_supports_auto() {        # $1 = modell
+  local m="${1-}"; m="${m%\[1m\]}"
+  [[ "$m" == *haiku* ]] && return 1
+  [[ "$m" == claude-opus-4-6* || "$m" == claude-sonnet-4-6* ]] && return 1
+  return 0
+}
+
+# Indithato-e ez a modell ebben a modban? NEM valtunk csendben modot (a CLI mar
+# megteszi, es pont az a baj): az ellentmondasos kombinaciot ELUTASITJUK, es
+# megmondjuk, mit valasszon a hivo.
+agent_perm_check() {                 # $1 = modell, $2 = jogosultsagi mod -> rc + uzenet stderr-re
+  if [[ "${2-}" == auto ]] && ! agent_model_supports_auto "${1-}"; then
+    print -u2 "a(z) ${1} modell nem támogatja az auto módot: a CLI ilyenkor manual módra vált, ami felügyelet nélkül az első engedélykérésnél örökre megáll. Add meg kifejezetten a jogosultsági módot — felügyelet nélküli futáshoz a dontAsk ajánlott (amit nem engedtél, azt elutasítja, ahelyett hogy várna); ha te válaszolsz a kérdésekre, manual."
+    return 1
+  fi
+  return 0
+}
