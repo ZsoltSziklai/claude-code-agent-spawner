@@ -558,6 +558,8 @@ xgrant_claim() {                     # $1=id $2=szulo $3=modell $4=no_ask $5=per
   elif [[ "$mod" != "$gm" ]];    then why="a modell eltér: $mod (a felhatalmazás: $gm)"
   elif [[ "$na" != "$gna" ]];    then why="a --no-ask eltér (a felhatalmazás: $gna)"
   elif [[ "$pm" == "bypassPermissions" ]]; then why="emelt jogosultság felhatalmazás alatt nem adható"
+  elif [[ "$pm" != "$(print -r -- "$r" | jq -r '.permission_mode // "auto"')" ]]; then
+    why="a jogosultsági mód eltér: $pm (a felhatalmazás: $(print -r -- "$r" | jq -r '.permission_mode // "auto"'))"
   elif (( used >= forks ));      then why="elfogyott: $used/$forks fork már elindult"
   fi
   if [[ -n "$why" ]]; then state_unlock; print -u2 "$why"; return 1; fi
@@ -1000,8 +1002,15 @@ validate_request() {                 # $1 = kérés-fájl
     [[ "$xna" == true || "$xna" == false ]] || { print -u2 "no_ask: true vagy false"; return 1 }
     # Emelt jogosultsag felhatalmazas alatt SOHA — ugyanaz az elv, mint a
     # meglevo idokorlatos felhatalmazasoknal.
-    xpm=$(jq -r '.permission_mode // empty' "$f")
-    [[ "$xpm" != "bypassPermissions" ]] || { print -u2 "bypassPermissions felhatalmazás alatt nem kérhető"; return 1 }
+    xpm=$(jq -r '.permission_mode // "auto"' "$f")
+    case "$xpm" in
+      auto|acceptEdits|plan|dontAsk|manual) ;;
+      bypassPermissions) print -u2 "bypassPermissions felhatalmazás alatt nem kérhető"; return 1 ;;
+      *) print -u2 "érvénytelen permission_mode: $xpm"; return 1 ;;
+    esac
+    # ⚠️ Ez a kiserletnel KULONOSEN fontos: 290 Haiku-fork auto modban mind manual-ra
+    # valtana, es mind az elso eszkozhivasnal allna meg — kerdes, amit senki nem lat.
+    agent_perm_check "$xm" "$xpm" || return 1
     # ⚠️ A SZULOK PONTOS NEVVEL, nem prefixszel. A prefix-illesztes ezen a heten
     # tobbszor rossz agentet talalt meg; egy felhatalmazasnak pontosan meg kell
     # mondania, kire szol. A szuloknek MAR FUTNIUK kell: igy a kervenyezo elobb
@@ -1022,9 +1031,9 @@ validate_request() {                 # $1 = kérés-fájl
     xpu=$(jq -r '.purpose // ""' "$f")
     (( $(printf %s "$xpu" | wc -c) <= 500 )) || { print -u2 "purpose: legfeljebb 500 bájt"; return 1 }
     jq -n --argjson ps "$pj" --argjson fk "$xf" --argjson hr "$xh" --argjson pa "$xpar" \
-          --arg m "$xm" --argjson na "$xna" --arg rb "$xrb" --arg pu "$xpu" \
+          --arg m "$xm" --argjson na "$xna" --arg rb "$xrb" --arg pu "$xpu" --arg pm "$xpm" \
       '{mode:"experiment", target:$rb, parents:$ps, forks:$fk, hours:$hr, parallel:$pa,
-        model:$m, no_ask:$na, requested_by:$rb, purpose:$pu}'
+        model:$m, no_ask:$na, permission_mode:$pm, requested_by:$rb, purpose:$pu}'
     return 0
   fi
 
@@ -1142,6 +1151,10 @@ validate_request() {                 # $1 = kérés-fájl
     auto|acceptEdits|plan|dontAsk|manual|bypassPermissions) ;;
     *) print -u2 "érvénytelen permission_mode: $pp"; return 1;;
   esac
+  # Uj sessiont csak a fork indit; a folytatas a meglevo agent sajat specjevel fut.
+  if [[ "$mode" == fork ]]; then
+    agent_perm_check "$model" "$pp" || return 1
+  fi
   jq -n --arg p "$parent" --arg a "$agent" --arg mo "$mode" --arg tg "$target" \
         --arg t "$task" --arg c "$cwd" --arg wn "$wtnote" \
         --arg m "$model" --arg e "$effort" --argjson w "$worktree" --arg pm "$pp" --arg rs "$rs" \

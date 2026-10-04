@@ -130,6 +130,22 @@ no_  "elutasítja a mythost (nincs hozzáférés)" agent_model_valid claude-fabl
 no_  "elutasít üres megadást"        agent_model_valid ""
 no_  "elutasít részleges nevet"      agent_model_valid claude-opus
 no_  "a [1m] nem tesz érvényessé rosszat" agent_model_valid 'claude-nincs[1m]'
+# ⚠️⚠️ HAIKU + AUTO: a CLI csendben MANUAL modra valt ("auto mode unavailable for
+# this model" -> "⏸ manual mode on", merve 2026-10-04). Felugyelet nelkul ez az elso
+# eszkozhivasnal orokre megall. NEM valtunk csendben modot, hanem elutasitjuk.
+no_  "a Haiku nem támogat auto módot (alias)"        agent_model_supports_auto haiku
+no_  "a rögzített Haiku sem"                         agent_model_supports_auto claude-haiku-4-5
+no_  "a dátumozott Haiku sem"                        agent_model_supports_auto claude-haiku-4-5-20251001
+no_  "1M utótaggal sem"                              agent_model_supports_auto 'claude-haiku-4-5[1m]'
+no_  "a CLI szerint az opus-4-6 sem"                 agent_model_supports_auto claude-opus-4-6
+yes_ "az Opus 5.5 igen"                              agent_model_supports_auto claude-opus-5-5
+yes_ "a Sonnet 5.5 igen"                             agent_model_supports_auto claude-sonnet-5-5
+no_  "Haiku + auto → elutasítva"                     agent_perm_check claude-haiku-4-5 auto
+yes_ "Haiku + dontAsk → rendben"                     agent_perm_check claude-haiku-4-5 dontAsk
+yes_ "Opus + auto → rendben"                         agent_perm_check claude-opus-5-5 auto
+is   "és az üzenet megmondja, mit válasszon" \
+     "$(agent_perm_check claude-haiku-4-5 auto 2>&1 | grep -c 'dontAsk')" "1"
+yes_ "a spawner is ellenőrzi" grep -q 'agent_perm_check "$model" "$pm"' "$ROOT/claude-agent-spawner"
 # Datumozott alak: a protokoll nem hasznalhat aliast (az sodrodik), es a napra
 # pontos azonositot irja elo. Mintaval megy, nem egyenkent felsorolva.
 yes_ "dátumozott alak érvényes"        agent_model_valid claude-haiku-4-5-20251001
@@ -393,7 +409,8 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
   _xreq() {                          # $1 = jq-modositas a jo keresen -> validate kilepes + kimenet
     jq -n --arg a "$XPA" --arg b "$XPB" \
       '{action:"experiment", requested_by:"mac-main-vegrehajto", parents:[$a,$b], forks:20,
-        hours:2, parallel:2, model:"claude-haiku-4-5-20251001", no_ask:true, purpose:"proba"}' \
+        hours:2, parallel:2, model:"claude-haiku-4-5-20251001", no_ask:true,
+        permission_mode:"dontAsk", purpose:"proba"}' \
       | jq "$1" > "$XG/r.json"
     _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; validate_request "'"$XG"'/r.json"' 2>&1
   }
@@ -430,9 +447,9 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
     req=$(validate_request "'"$XG"'/r.json") && xgrant_from_request xg1 "$req" >/dev/null' 2>/dev/null
   is   "a felhatalmazás létrejött, 0 felhasználva"   "$(_xq '.xgrants.xg1.used')" "0"
   is   "a lejárat a jövőben van"  "$(( $(_xq '.xgrants.xg1.until') > $(date -u +%s) ))" "1"
-  is   "jó szülő + modell → foglalás sikerül"  "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto "$XPA-k1")" "0"
+  is   "jó szülő + modell → foglalás sikerül"  "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true dontAsk "$XPA-k1")" "0"
   is   "és a számláló nő"                      "$(_xq '.xgrants.xg1.used')" "1"
-  is   "idegen szülő → nem"     "$(_xc xg1 mac-main-mas claude-haiku-4-5-20251001 true auto k)" "1"
+  is   "idegen szülő → nem"     "$(_xc xg1 mac-main-mas claude-haiku-4-5-20251001 true dontAsk k)" "1"
   is   "eltérő modell → nem"    "$(_xc xg1 "$XPA" claude-opus-5-5 true auto k)" "1"
   is   "eltérő --no-ask → nem"  "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 false auto k)" "1"
   is   "emelt jogosultság → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true bypassPermissions k)" "1"
@@ -440,33 +457,33 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
   # ⚠️ A PARHUZAMOS KERET a meg EL NEM INDULT gyereket is szamolja: a foglalas es a
   # session felallasa kozott masodpercek telnek el, es ket gyors fork kulonben
   # mindketto szabadnak latna ugyanazt a helyet.
-  is   "2. foglalás (parallel=2) sikerül"    "$(_xc xg1 "$XPB" claude-haiku-4-5-20251001 true auto "$XPB-k2")" "0"
+  is   "2. foglalás (parallel=2) sikerül"    "$(_xc xg1 "$XPB" claude-haiku-4-5-20251001 true dontAsk "$XPB-k2")" "0"
   is   "a 3. — két még el sem indult gyerek mellett — VÁRJ (75)" \
-       "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto "$XPA-k3")" "75"
+       "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true dontAsk "$XPA-k3")" "75"
   # A fuggo hely lejar -> felszabadul (a fork kozben elhalt, csapda nelkul).
   is   "a lejárt függő foglalás felszabadul" \
-       "$(env XGRANT_PENDING_SEC=0 BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_claim xg1 "'"$XPA"'" claude-haiku-4-5-20251001 true auto "'"$XPA"'-k3" >/dev/null 2>&1; print $?')" "0"
+       "$(env XGRANT_PENDING_SEC=0 BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_claim xg1 "'"$XPA"'" claude-haiku-4-5-20251001 true dontAsk "'"$XPA"'-k3" >/dev/null 2>&1; print $?')" "0"
   # Az ELO session viszont lejarat utan is foglal.
   tmux new-session -d -s "agent-$XPA-k3" 'sleep 600'
   is   "az élő gyerek lejárat után is foglal" \
-       "$(env XGRANT_PENDING_SEC=0 BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_claim xg1 "'"$XPA"'" claude-haiku-4-5-20251001 true auto "'"$XPA"'-k4" >/dev/null 2>&1; print $?')" "0"
+       "$(env XGRANT_PENDING_SEC=0 BRIDGE_STATE="$XG/state.json" BRIDGE_CONFIG="$XG/allow.json" zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_claim xg1 "'"$XPA"'" claude-haiku-4-5-20251001 true dontAsk "'"$XPA"'-k4" >/dev/null 2>&1; print $?')" "0"
   tmux kill-session -t "=agent-$XPA-k3" 2>/dev/null
   _xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_release xg1 "'"$XPA"'-k4"' >/dev/null 2>&1
   is   "a visszaadott hely csökkenti a számlálót" "$(_xq '.xgrants.xg1.used')" "3"
   is   "és kikerül a gyerekek közül" "$(_xq '[.xgrants.xg1.children[].name] | index("'"$XPA"'-k4")')" "null"
   # Leallitas, kifogyas, lejarat
   jq '.xgrants.xg1.stopped = true' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
-  is   "leállított felhatalmazás → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto kx)" "1"
+  is   "leállított felhatalmazás → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true dontAsk kx)" "1"
   jq '.xgrants.xg1.stopped = false | .xgrants.xg1.used = 20' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
-  is   "elfogyott felhatalmazás → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto kx)" "1"
+  is   "elfogyott felhatalmazás → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true dontAsk kx)" "1"
   jq '.xgrants.xg1.used = 0 | .xgrants.xg1.until = 1' "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
-  is   "lejárt felhatalmazás → nem"   "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto kx)" "1"
+  is   "lejárt felhatalmazás → nem"   "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true dontAsk kx)" "1"
 
   # --- VALODI parhuzamossag a zarra: 6 egyideju foglalas, parallel=2 -> pontosan 2
   jq '.xgrants.xg1.until = 9999999999 | .xgrants.xg1.used = 0 | .xgrants.xg1.children = []' \
      "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
   for i in 1 2 3 4 5 6; do
-    ( _xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto "$XPA-par$i" > "$XG/par$i" ) &
+    ( _xc xg1 "$XPA" claude-haiku-4-5-20251001 true dontAsk "$XPA-par$i" > "$XG/par$i" ) &
   done; wait
   is   "6 egyidejű foglalásból pontosan 2 sikerül (a zár tart)" \
        "$(cat "$XG"/par* | grep -cx 0)" "2"
@@ -528,6 +545,40 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
        eval 'zsh "$ROOT/bin/agent-exp-fork" xg1 suf --grant mas 2>&1 | grep -q "nem adható meg"'
   yes_ "a wrapper tényleg felhatalmazás alá teszi (ismeretlen id → elutasítás)" \
        eval 'env CLAUDE_AGENT_NAME="$XPA" BRIDGE_STATE="$XG/state.json" CLAUDE_AGENT_QUEUE="$XG/q" FORK_TREE="$XG/q/fork-tree.json" CLAUDE_AGENT_ROOT="$XG/proj" HOME="$XG/home" CLAUDE_CODE_SESSION_ID=t zsh "$ROOT/bin/agent-exp-fork" nincs-xg suf --cwd nincs-ilyen 2>&1 | grep -q "nincs ilyen kísérlet-felhatalmazás"'
+
+  # --- HAIKU + AUTO a hidon es a kiserletben
+  no_  "kísérlet Haikuval, mód nélkül (auto) → elutasítva" eval '_xreq "del(.permission_mode)" | jq -e .mode >/dev/null 2>&1'
+  yes_ "és az indok a manual-váltás"   eval '_xreq "del(.permission_mode)" | grep -q "nem támogatja az auto módot"'
+  is   "a felhatalmazás rögzíti a módot" "$(_xreq . | jq -r .permission_mode)" "dontAsk"
+  # a foglalasnal a modnak EGYEZNIE kell a felhatalmazasevel
+  jq '.xgrants.xg1.until = 9999999999 | .xgrants.xg1.used = 0 | .xgrants.xg1.children = [] | .xgrants.xg1.stopped = false' \
+     "$XG/state.json" > "$XG/s" && mv "$XG/s" "$XG/state.json"
+  is   "eltérő jogosultsági mód → nem" "$(_xc xg1 "$XPA" claude-haiku-4-5-20251001 true auto kpm)" "1"
+  # hid, sima fork-keres
+  print '{"parent":"mac-main","task":"x","model":"claude-haiku-4-5-20251001"}' > "$XG/f.json"
+  is   "hídon Haiku-fork mód nélkül → elutasítva" \
+       "$(_xenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; validate_request "'"$XG"'/f.json"' 2>&1 | grep -c 'nem támogatja az auto módot')" "1"
+  # fork-agent (csonkokkal: elo session nem indulhat)
+  yes_ "a fork-agent Haiku + auto mellett nem indul" \
+       eval '_fg "$XPA" hk --model claude-haiku-4-5-20251001 --cwd nincs-ilyen | grep -q "nem támogatja az auto módot"'
+  yes_ "dontAsk-kal túljut az ellenőrzésen" \
+       eval '_fg "$XPA" hk --model claude-haiku-4-5-20251001 --permission-mode dontAsk --cwd nincs-ilyen | grep -q "a cwd nem létezik"'
+
+  # --- export: PONTOS mezoegyezes (2026-10-04: az `opus5` az `opus55` forkjait is
+  # beszamolta; a javasolt `grep -E` pedig a PONTOS azonositonal bukott volna el,
+  # mert regexben a pont barmilyen karakter)
+  _EG=$(mktemp -d "$TMPDIR/eg.XXXX"); mkdir -p "$_EG/q"
+  print -l "2026-10-04T08:00:00Z FORKED a1 from=p grant=opus5" \
+           "2026-10-04T08:01:00Z FORKED b1 from=p grant=opus55" \
+           "2026-10-04T08:02:00Z FORKED b2 from=p grant=opus55" \
+           "2026-10-04T08:03:00Z FORKED c1 from=p grant=opusX5" \
+           "2026-10-04T08:04:00Z FORKED d1 from=p grant=opus.5" > "$_EG/q/fork.log"
+  print '{"xgrants":{"opus5":{},"opus55":{},"opus.5":{}}}' > "$_EG/state.json"
+  _egc() { env BRIDGE_STATE="$_EG/state.json" CLAUDE_AGENT_QUEUE="$_EG/q" zsh "$ROOT/bin/agent-grant-export" "$1" 2>/dev/null | jq -r .fork_count }
+  is   "az opus5 exportja csak a sajátját számolja (nem az opus55-ét)" "$(_egc opus5)" "1"
+  is   "az opus55-é a sajátját"                                       "$(_egc opus55)" "2"
+  is   "a PONTOT tartalmazó azonosító sem illeszkedik másra"         "$(_egc opus.5)" "1"
+  rm -rf "$_EG"
 
   # --- export a replikacios csomagnak
   _xex=$(env BRIDGE_STATE="$XG/state.json" CLAUDE_AGENT_QUEUE="$XG/q" zsh "$ROOT/bin/agent-grant-export" xg1 2>/dev/null)
@@ -595,7 +646,7 @@ if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xg-probe-$$" 'slee
   rm -rf "$XG"; trap 'rm -rf "$TMP"' EXIT
 else
   print "  \033[33m⚠\033[0m tmux nincs — a kísérlet-felhatalmazás tesztjei kimaradnak"
-  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 67 ))
+  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 77 ))
 fi
 
 print "\n\033[1mkézbesítés-ellenőrzés: üres bizonyíték ≠ siker\033[0m"
@@ -1618,7 +1669,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=400}
+: ${SMOKE_EXPECTED:=422}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

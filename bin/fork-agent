@@ -47,7 +47,7 @@ PARENT_NAME="${CLAUDE_AGENT_NAME:-}"
 # ---------------------------------------------------------------------------
 # Argumentumok
 # ---------------------------------------------------------------------------
-SUFFIX=""; WANT_WT=false; REQ_CWD=""; MODEL="opus"; EFFORT="high"; MODEL_SET=false; GRANT=""
+SUFFIX=""; WANT_WT=false; REQ_CWD=""; MODEL="opus"; EFFORT="high"; MODEL_SET=false; PERM_SET=false; GRANT=""
 # ⚠️ ALAPERTELMEZES: FRISS session (2026-08-31). Korabban `full` volt, azaz a
 # gyerek a szulo TELJES beszelgeteset orokolte. Ketszer bizonyitottan a szulo
 # SZEREPET folytatta a sajat feladata helyett (714 soros orokolt atirat, a
@@ -85,7 +85,7 @@ while (( $# )); do
     --cwd)       REQ_CWD="${2:?--cwd needs a value}"; shift 2 ;;
     --model)     MODEL="${2:?--model needs a value}"; MODEL_SET=true; shift 2 ;;
     --effort)    EFFORT="${2:?--effort needs a value}"; shift 2 ;;
-    --permission-mode) PERM="${2:?--permission-mode needs a value}"; shift 2 ;;
+    --permission-mode) PERM="${2:?--permission-mode needs a value}"; PERM_SET=true; shift 2 ;;
     --requested-by)    REQUESTED_BY="${2:?--requested-by needs a value}"; shift 2 ;;
     # KISERLET-FELHATALMAZAS alatt: gombnyomas nelkul indul, de csak a jovahagyott
     # kereten belul (szulo, modell, --no-ask, darabszam, parhuzamossag, lejarat).
@@ -160,7 +160,13 @@ if [[ -n "$GRANT" ]]; then
   $MODEL_SET || MODEL=$(print -r -- "$_XREC" | jq -r .model)
   # A --no-ask a felhatalmazas resze: igy a kiserlet minden gyereke ugyanugy fut.
   [[ "$(print -r -- "$_XREC" | jq -r .no_ask)" == true ]] && NO_ASK=true
+  # A jogosultsagi mod is: a kervenyben rogzitett (Haikunal az auto nem lehet az).
+  $PERM_SET || PERM=$(print -r -- "$_XREC" | jq -r '.permission_mode // "auto"')
 fi
+
+# A modell es a mod MOST mar vegleges (felhatalmazas alatt a grant adhatja). Haiku +
+# auto: a CLI csendben manual-ra valtana, es felugyelet nelkul az agent megallna.
+_pmerr=$(agent_perm_check "$MODEL" "$PERM" 2>&1) || die "$_pmerr"
 
 MAX_BURST="${CLAUDE_AGENT_MAX_BURST:-10}"     # ennyi fork / ablak, RENDSZERSZINTEN
 BURST_WIN="${CLAUDE_AGENT_BURST_WINDOW:-600}" # masodperc

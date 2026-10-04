@@ -342,6 +342,7 @@ agent several times this week.)
   "parallel":     5,
   "model":        "claude-haiku-4-5-20251001",
   "no_ask":       true,
+  "permission_mode": "dontAsk",
   "purpose":      "role-continuity pilot"
 }
 ```
@@ -355,7 +356,10 @@ agent several times this week.)
 | `parallel` | **yes** | how many may run at once (≤ `forks`) |
 | `model` | **yes** | the authorisation is for one specific model; dated ids work (`claude-haiku-4-5-20251001`) |
 | `no_ask` | no | default `true`; every child gets `--no-ask` |
+| `permission_mode` | no | default `auto`; every child runs in it. **Haiku needs an explicit one** — see below |
 | `purpose` | no | ≤ 500 bytes, shown on the approval message |
+
+⚠️ **Haiku cannot run in `auto` mode**: the CLI silently switches it to `manual` ("auto mode unavailable for this model"), and an unattended agent then stops at its first permission prompt — forever. A Haiku request without an explicit mode is therefore rejected. Use `dontAsk` for unattended work (it refuses what is not allowed instead of waiting), `manual` only if someone answers.
 
 A request above the sanity ceiling in `bridge-allow.json` (`experiment.max_forks /
 max_hours / max_parallel`, default 500 / 24 / 10) is rejected before it reaches the
@@ -857,6 +861,7 @@ a héten többször rossz agentet talált meg.)
   "parallel":     5,
   "model":        "claude-haiku-4-5-20251001",
   "no_ask":       true,
+  "permission_mode": "dontAsk",
   "purpose":      "szerepfolytonosság-pilot"
 }
 ```
@@ -870,7 +875,10 @@ a héten többször rossz agentet talált meg.)
 | `parallel` | **igen** | egyszerre hány futhat (≤ `forks`) |
 | `model` | **igen** | a felhatalmazás egy konkrét modellre szól; a dátumozott id is jó (`claude-haiku-4-5-20251001`) |
 | `no_ask` | nem | alapból `true`; minden gyerek `--no-ask`-ot kap |
+| `permission_mode` | nem | alapból `auto`; minden gyerek ebben fut. **Haikunál kifejezetten meg kell adni** — lásd lent |
 | `purpose` | nem | ≤ 500 bájt, a jóváhagyó üzeneten látszik |
+
+⚠️ **A Haiku nem futhat `auto` módban**: a CLI csendben `manual`-ra váltja („auto mode unavailable for this model"), és egy felügyelet nélküli agent az első engedélykérésnél örökre megáll. A kifejezett mód nélküli Haiku-kérést ezért elutasítjuk. Felügyelet nélkül `dontAsk` (amit nem engedtél, azt elutasítja, ahelyett hogy várna), `manual` csak akkor, ha valaki válaszol.
 
 A `bridge-allow.json` józansági plafonja (`experiment.max_forks / max_hours /
 max_parallel`, alapból 500 / 24 / 10) fölötti kérés el sem jut a telefonig. A
