@@ -278,9 +278,49 @@ agent_runtime_cwd() {
 }
 
 # Transcript dir for a cwd — claude escapes both `/` and `.` to `-`.
+# A Claude Code projekt-konyvtaranak neve egy cwd-bol. A CLI-t tukrozi (2.1.289):
+#     function k(e){ return e.replace(/[^a-zA-Z0-9]/g, "-") }
+#     function eI(e){ let n=k(e); if (n.length<=200) return n; return `${n.slice(0,200)}-${hash(e)}` }
+# vagyis MINDEN nem-alfanumerikus karakter kotojel — az `_` es az ekezetes betu is.
+#
+# ⚠️⚠️ 2026-10-06: az elso valtozat csak a `/`-t es a `.`-t csereltee (`sed 's#[/.]#-#g'`).
+# A `_KUTATÁS` munkakonyvtaru agentnel ez `…-_KUTATÁS`-t adott, a valodi konyvtar
+# pedig `…--KUTAT-S` — a kuldes-ellenorzes rossz helyen kereste az atiratot, es
+# HAMIS `PROMPT-LOST`-ot jelentett, mikozben a feladat megerkezett. Sikertelen
+# ellenorzes utan a kuldo MASODSZOR is elkuldi a feladatot; ezuttal veletlenul nem
+# jutott be.
+#
+# KARAKTERENKENT, nem bajtonkent: az `Á` EGY kotojel (a JS a UTF-16 kodegysegeket
+# cserelI — a BMP-n kivuli karakter, pl. emoji, ezert KETTO). A locale-t a fuggveny
+# maga allitja, hogy egy C-locale-u hivo (launchd) se bajtonkent szamoljon.
+cc_project_slug() {
+  emulate -L zsh
+  local LC_ALL=en_US.UTF-8
+  local s="$1" out="" c
+  local -i i cp
+  for (( i = 1; i <= ${#s}; i++ )); do
+    c="${s[i]}"; cp=$(( #c ))
+    if (( (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) )); then
+      out+="$c"
+    elif (( cp > 65535 )); then
+      out+="--"
+    else
+      out+="-"
+    fi
+  done
+  print -r -- "$out"
+}
+
 transcript_dir() {
-  local rcwd="$1"
-  print -r -- "$HOME/.claude/projects/$(print -r -- "$rcwd" | sed 's#[/.]#-#g')"
+  local slug; slug=$(cc_project_slug "$1")
+  # 200 karakter felett a CLI csonkol es hash-t fuz hozza, amit nem tudunk
+  # kiszamolni — de az elotag egyertelmu, tehat azzal keressuk meg.
+  if (( ${#slug} > 200 )); then
+    local -a m; m=("$HOME/.claude/projects/${slug[1,200]}-"*(N/))
+    if (( ${#m} )); then print -r -- "${m[1]}"; return 0; fi
+    print -r -- "$HOME/.claude/projects/${slug[1,200]}"; return 0
+  fi
+  print -r -- "$HOME/.claude/projects/$slug"
 }
 
 # Egy FUTÓ agent pontos session id-ja a saját állapotfájljából.
@@ -381,7 +421,9 @@ agent_send_prompt() {
   local tmuxb; tmuxb=$(command -v tmux) || return 1
   local sess; sess=$(agent_tmux_session "$name") || return 1
   local flat="${text//$'\n'/ }" pos sent=false tdir w try t0 frag fragend
-  tdir="$HOME/.claude/projects/$(print -r -- "$cwd" | sed 's|/|-|g; s|\.|-|g')"
+  # A CLI nevkepzese EGY helyen (transcript_dir) — a sajat masolat itt
+  # elcsuszott (csak `/`-t es `.`-t cserelt), lasd cc_project_slug.
+  tdir=$(transcript_dir "$cwd")
   # ⚠️ A mintat a LAPOSITOTT szovegbol vesszuk: a beviteli sorba is az megy, a
   # nyers valtozat sortoresei pedig tobbsoros grep-mintat csinalnanak.
   frag="${flat[1,60]}"
@@ -397,7 +439,12 @@ agent_send_prompt() {
   # Az agent SAJAT atirata, ha feloldhato (a futo folyamat allapotfajljabol).
   local own="" _osid
   _osid=$(agent_session_id "$name" 2>/dev/null || true)
-  [[ -n "$_osid" && -f "$tdir/$_osid.jsonl" ]] && own="$tdir/$_osid.jsonl"
+  # A sajat atiratot a MUNKAMENET-AZONOSITOVAL keressuk, barmelyik projekt-konyvtar
+  # alatt — igy a konyvtarnev kepzesetol egyaltalan nem fugg.
+  if [[ -n "$_osid" ]]; then
+    local _of
+    for _of in "$HOME/.claude/projects"/*/"$_osid.jsonl"(N); do own="$_of"; break; done
+  fi
   for try in 1 2; do
     # ⚠️ ELOSZOR TAKARITSUK KI a beviteli sort. Egy korabbi, csonkolt kuldes
     # MARADEKA ott ulhet elkuldetlenul — 2026-08-31-en a CLI-agent sorában

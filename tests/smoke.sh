@@ -374,6 +374,36 @@ is   "a pozicionális prompt eldobva"  "$(restart_argv "$_B" S | grep -c 'Ez-egy
 _C='/Users/x/.local/bin/claude --remote-control a --worktree=a --brief'
 is   "a --worktree eldobva"           "$(restart_argv "$_C" S | grep -c 'worktree')" "0"
 
+print "\n\033[1mátirat-könyvtár: a CLI névképzése\033[0m"
+# ⚠️ 2026-10-06: a nevkepzes csak `/`-t es `.`-t csereltee, a CLI viszont MINDEN
+# nem-alfanumerikus karaktert (`e.replace(/[^a-zA-Z0-9]/g,"-")`). A `_KUTATÁS`
+# munkakonyvtaru agentnel a kuldes-ellenorzes rossz helyen kereste az atiratot, es
+# hamis PROMPT-LOST-ot jelentett (a feladat megerkezett) — sikertelen ellenorzes
+# utan pedig a kuldo masodszor is elkuldi a feladatot. A vart ertekek az ELES
+# lemezrol vannak (a CLI altal letrehozott konyvtarnevek).
+is   "ékezet és aláhúzás → kötőjel" \
+     "$(cc_project_slug '/Users/x/ClaudeProjects/_KUTATÁS')" "-Users-x-ClaudeProjects--KUTAT-S"
+is   "a pont is kötőjel"            "$(cc_project_slug '/Users/x/sziklaizsolt.hu')" "-Users-x-sziklaizsolt-hu"
+is   "worktree-útvonal"             "$(cc_project_slug '/Users/x/P/.claude/worktrees/a-b')" "-Users-x-P--claude-worktrees-a-b"
+# A JS a UTF-16 KODEGYSEGEKET cserelI: a BMP-n kivuli karakter (emoji) KET kotojel.
+is   "emoji = két kötőjel (mint a JS)" "$(cc_project_slug '/t/a😀b')" "-t-a--b"
+# ⚠️ KARAKTERENKENT, nem bajtonkent — egy C-locale-u hivo (launchd) mellett is.
+is   "C-locale-ű hívóból is karakterenként" \
+     "$(LC_ALL=C zsh -c 'source "'"$ROOT"'/bin/_agent-lib.sh"; cc_project_slug "/a/_KUTATÁS"')" "-a--KUTAT-S"
+# 200 karakter felett a CLI csonkol es hash-t fuz hozza; az elotaggal talaljuk meg.
+_TH=$(mktemp -d "$TMPDIR/th.XXXX")
+_long="/$(printf 'a%.0s' {1..250})"
+_pre=$(cc_project_slug "$_long"); mkdir -p "$_TH/.claude/projects/${_pre[1,200]}-abc123"
+is   "200 felett a hash-elt könyvtárat is megtalálja" \
+     "$(HOME="$_TH" zsh -c 'source "'"$ROOT"'/bin/_agent-lib.sh"; transcript_dir "$1"' _ "$_long" | sed 's|.*/||')" "${_pre[1,200]}-abc123"
+rm -rf "$_TH"
+# A kuldo NEM tarthat sajat masolatot a nevkepzesrol (az csuszott el).
+is   "a küldő nem tart saját névképzést" \
+     "$(grep -c "sed 's|/|-|g" "$ROOT/bin/_agent-lib.sh")" "0"
+yes_ "a küldő a közös transcript_dir-t használja" grep -q 'tdir=$(transcript_dir "$cwd")' "$ROOT/bin/_agent-lib.sh"
+# ...es a sajat atiratot munkamenet-azonositoval keresi, konyvtarnevtol fuggetlenul
+yes_ "a saját átiratot session-id alapján keresi" grep -q '"$HOME/.claude/projects"/\*/"$_osid.jsonl"' "$ROOT/bin/_agent-lib.sh"
+
 print "\n\033[1mkill-utak: a fork-fát is takarítják\033[0m"
 # ⚠️ 2026-10-03: a `kill-one` (es a ra epulo `kill-tree`) nem vette ki a gyereket a
 # fork-fabol — egy eles proba utan egy halott fork ott maradt. Funkcionalisan merjuk,
@@ -1669,7 +1699,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=422}
+: ${SMOKE_EXPECTED:=431}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
