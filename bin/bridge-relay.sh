@@ -217,9 +217,12 @@ for f in "$REQ_DIR"/*.json; do
       # csatolmanyt a telefonon senki nem nyitja meg gombnyomas elott.
       _x() { print -r -- "$req" | jq -r "$1" }
       if [[ "$(_x .no_ask)" == true ]]; then _xna="$(t m.xnoask_on)"; else _xna="$(t m.xnoask_off)"; fi
+      # A pillanatkep-sor a cel ALA, a kerdes ELE: a dontes resze, nem utoirat.
+      _xpu="$(_x '.purpose // ""')"
+      _xs=$(xgrant_snapshot_line "$req"); [[ -n "$_xs" ]] && _xpu+=$'\n'"$_xs"
       btn="$(t m.xask "$id" "$(_x .requested_by)" "$(_x '.parents | join(", ")')" \
               "$(_x .forks)" "$(_x .hours)" "$(_x .parallel)" "$(_x .model)" "$_xna" \
-              "$(_x '.purpose // ""')")"
+              "$_xpu")"
     else
       btn="$(t m.askstart "$id")"
     fi

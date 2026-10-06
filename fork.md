@@ -52,6 +52,27 @@ A script maga oldja fel a szülőt a `CLAUDE_CODE_SESSION_ID` és a `CLAUDE_AGEN
 
 Opcionális: `--model`, `--effort`, `--cwd`, illetve a kontextus-öröklés: `--summary` (összefoglalóból indul, olcsóbb) vagy `--inherit` (a teljes beszélgetés). Alapból egyik sem — friss session indul.
 
+### Kísérleti fork befagyasztott szülőből — `--from-snapshot <sid>`
+
+Ezt a `/fork` **nem** használja: csak kísérleti felhatalmazás alatt él, az
+`agent-exp-fork <id> <suffix> --from-snapshot <sid> …` hívással. A szülő ilyenkor
+nem az élő session, hanem egy session-fájl (`~/.claude/projects/<cwd-slug>/<sid>.jsonl`),
+és a gyerek ebből forkol (`--resume <sid> --fork-session`). Így minden gyerek
+ugyanabból a befagyasztott állapotból indul, és egyik sem látja a testvérei
+fork-promptjait.
+
+- A sid-nek benne kell lennie a felhatalmazás `snapshots` listájában. A fájl
+  sha256-ját a kérvény beérkezésekor rögzítjük, és minden fork előtt
+  újraszámoljuk: ha a tartalom a jóváhagyás óta változott, a fork megáll.
+- A fájlt a spawner **csak olvassa**: nem másol, nem ír át semmit. Ha hiányzik,
+  többször szerepel, nem érvényes jsonl, vagy a `sessionId` mezői nem a sid-re
+  mutatnak, a fork megáll.
+- A gyerek szülő-neve a felhatalmazás `snapshot_holder`-e, nem a végrehajtóé. Ez
+  kerül a fork-fába, a naplóba és a gyerek tájékoztató szövegébe. A végrehajtó
+  neve a `fork.log` `by=` mezőjébe kerül.
+- `--fresh`-sel együtt hiba (a pillanatkép-fork örököl). A mélységkorlát a tartó
+  mélységéből számol.
+
 ## 5. lépés — Visszaigazolás
 
 A script kiírja a nevet, a cwd-t, az ágat és a csatlakozási parancsot. Add tovább, és tedd hozzá:
