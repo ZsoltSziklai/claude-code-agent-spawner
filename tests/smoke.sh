@@ -679,6 +679,135 @@ else
   SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 77 ))
 fi
 
+print "\n\033[1mpillanatkép-fork (--from-snapshot)\033[0m"
+# Befagyasztott szulobol forkolunk: a szulo egy session-FAJL, nem az elo session.
+# Csak kiserleti felhatalmazas alatt, a jovahagyott listaban szereplo sid-re, es
+# csak ha a fajl tartalma (sha256) a jovahagyas ota nem valtozott.
+if command -v tmux >/dev/null 2>&1 && tmux new-session -d -s "xs-probe-$$" 'sleep 1' 2>/dev/null; then
+  tmux kill-session -t "=xs-probe-$$" 2>/dev/null
+  XS=$(mktemp -d)
+  XSH="mac-main-xshold-$$"            # a tarto: a gyerekek szulo-neve
+  XSE="mac-main-xsexec-$$"            # a vegrehajto: o hivja a fork-agentet
+  trap 'rm -rf "$TMP" "$XS"; tmux kill-session -t "=agent-$XSH" 2>/dev/null' EXIT
+  tmux new-session -d -s "agent-$XSH" 'sleep 600'
+  SID=7f3c1a2b-4d5e-4f60-8a9b-0c1d2e3f4a5b
+  mkdir -p "$XS/home/.claude/projects/-x-snap" "$XS/home/.local/bin" "$XS/q" "$XS/bridge/requests" "$XS/proj/run"
+  SF="$XS/home/.claude/projects/-x-snap/$SID.jsonl"
+  _mksnap() {                         # $1 = sessionId a rekordokban
+    print -l "{\"type\":\"user\",\"uuid\":\"u1\",\"parentUuid\":null,\"sessionId\":\"$1\",\"message\":{\"role\":\"user\",\"content\":\"MARKER-XS-42\"}}" \
+             "{\"type\":\"file-history-snapshot\",\"messageId\":\"u1\"}" \
+             "{\"type\":\"assistant\",\"uuid\":\"a1\",\"parentUuid\":\"u1\",\"sessionId\":\"$1\",\"session_id\":\"$1\"}" > "$SF"
+  }
+  _mksnap "$SID"
+  print '{"user_id":1,"parents":["mac-main"],"experiment":{"max_forks":50,"max_hours":12,"max_parallel":4}}' > "$XS/allow.json"
+  _sxenv() { env HOME="$XS/home" BRIDGE_STATE="$XS/state.json" BRIDGE_CONFIG="$XS/allow.json" BRIDGE_DIR="$XS/bridge" \
+              CLAUDE_AGENT_QUEUE="$XS/q" BRIDGE_LOG="$XS/bridge.log" "$@" }
+  _sreq() {                           # $1 = jq-modositas a jo keresen
+    jq -n --arg h "$XSH" --arg e "$XSE" --arg s "$SID" \
+      '{action:"experiment", requested_by:$e, parents:[$h], forks:5, hours:1, parallel:2,
+        model:"claude-haiku-4-5-20251001", no_ask:true, permission_mode:"dontAsk", purpose:"snap",
+        snapshots:[$s], snapshot_holder:$h}' | jq "$1" > "$XS/r.json"
+    _sxenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; validate_request "'"$XS"'/r.json"' 2>&1
+  }
+  _sok() { _sreq "$1" | jq -e .mode >/dev/null 2>&1 }
+  # --- a kervény
+  is   "érvényes pillanatképes kérés → a hash rögzül" \
+       "$(_sreq . | jq -r '.snapshots[0].sha256' 2>/dev/null)" "$(shasum -a 256 "$SF" | awk '{print $1}')"
+  is   "és a tartó is"                       "$(_sreq . | jq -r .snapshot_holder 2>/dev/null)" "$XSH"
+  is   "pillanatkép nélküli kérés kimenete nem változik (nincs snapshots kulcs)" \
+       "$(_sreq 'del(.snapshots, .snapshot_holder)' | jq -r 'has("snapshots") or has("snapshot_holder")' 2>/dev/null)" "false"
+  no_  "tartó nélkül elutasítva"             _sok 'del(.snapshot_holder)'
+  no_  "a szülők közt nem szereplő tartó elutasítva" _sok ".snapshot_holder=\"$XSE\""
+  no_  "tartó pillanatkép nélkül elutasítva" _sok 'del(.snapshots)'
+  no_  "nem uuid sid elutasítva"             _sok '.snapshots=["../../etc/passwd"]'
+  no_  "ismétlődő sid elutasítva"            _sok ".snapshots=[\"$SID\",\"$SID\"]"
+  no_  "nem létező pillanatkép elutasítva"   _sok '.snapshots=["00000000-0000-4000-8000-000000000000"]'
+  yes_ "és a hiba megmondja, hol kereste"    eval '_sreq ".snapshots=[\"00000000-0000-4000-8000-000000000000\"]" | grep -q "nem található"'
+  print 'nem json' >> "$SF"
+  no_  "érvénytelen jsonl elutasítva"        _sok .
+  _mksnap "11111111-2222-4333-8444-555555555555"
+  no_  "át nem írt sessionId elutasítva"     _sok .
+  yes_ "és az ok a belső azonosító"          eval '_sreq . | grep -q "belső azonosítója nem a fájlnév"'
+  _mksnap "$SID"
+  mkdir -p "$XS/home/.claude/projects/-x-masik"; cp "$SF" "$XS/home/.claude/projects/-x-masik/"
+  no_  "két helyen szereplő pillanatkép elutasítva (nem egyértelmű)" _sok .
+  rm -rf "$XS/home/.claude/projects/-x-masik"
+  # --- a felhatalmazas
+  _sreq . >/dev/null
+  _sxenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"
+    req=$(validate_request "'"$XS"'/r.json") && xgrant_from_request xs1 "$req" >/dev/null
+    jq -n --arg h "'"$XSH"'" "{action:\"experiment\", requested_by:\"'"$XSE"'\", parents:[\$h], forks:5, hours:1, parallel:2, model:\"claude-haiku-4-5-20251001\", no_ask:true, permission_mode:\"dontAsk\"}" > "'"$XS"'/p.json"
+    req=$(validate_request "'"$XS"'/p.json") && xgrant_from_request xsplain "$req" >/dev/null' 2>/dev/null
+  _sq() { jq -r "$1" "$XS/state.json" 2>/dev/null }
+  is   "a felhatalmazás őrzi a pillanatképet és a hasht" "$(_sq '.xgrants.xs1.snapshots[0].sid')" "$SID"
+  _sc() { _sxenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_claim "$@"' _ "$@" >/dev/null 2>&1; print $? }
+  is   "foglalás: tartó + listás pillanatkép → igen" "$(_sc xs1 "$XSH" claude-haiku-4-5-20251001 true dontAsk "$XSH-c1" "$SID")" "0"
+  is   "listán kívüli pillanatkép → nem" "$(_sc xs1 "$XSH" claude-haiku-4-5-20251001 true dontAsk k "00000000-0000-4000-8000-000000000000")" "1"
+  is   "pillanatképes felhatalmazás nélkül → nem" "$(_sc xsplain "$XSH" claude-haiku-4-5-20251001 true dontAsk k "$SID")" "1"
+  jq '.xgrants.xs1.used = 0 | .xgrants.xs1.children = []' "$XS/state.json" > "$XS/s" && mv "$XS/s" "$XS/state.json"
+  # --- a gombos uzenet: a dontes resze, tehat OTT kell lennie
+  _sline() { _sxenv zsh -c 'source "'"$ROOT"'/bin/_bridge-lib.sh"; xgrant_snapshot_line "$(jq -c ".xgrants.$1" "'"$XS"'/state.json")"' _ "$1" 2>/dev/null }
+  yes_ "a gombos üzeneten ott a pillanatkép és a hash eleje" \
+       eval '_sline xs1 | grep -q "$(shasum -a 256 "$SF" | cut -c1-12)"'
+  is   "pillanatkép nélküli felhatalmazásnál nincs ilyen sor" "$(_sline xsplain)" ""
+  yes_ "a nyilvántartó csatolmányban a teljes hash" \
+       eval '_sxenv zsh -c "source \"$ROOT/bin/_bridge-lib.sh\"; summary_text xs1 \"\$(jq -c \".xgrants.xs1 + {mode:\\\"experiment\\\"}\" \"$XS/state.json\")\"" | grep -q "$(shasum -a 256 "$SF" | awk "{print \$1}")"'
+  # --- fork-agent: rogzito tmux-csonk. A `respawn-pane`-nel elmenti a TELJES
+  # claude-parancssort, majd hibaval kilep — igy valodi session nem indulhat, de
+  # latjuk, mivel indult volna a gyerek.
+  ln -sf "$(command -v jq)" "$XS/home/.local/bin/jq"
+  print '#!/bin/sh\nexit 1' > "$XS/home/.local/bin/claude"
+  print "#!/bin/sh\nprintf '%s\\\\n' \"\$*\" >> '$XS/tmux.log'\ncase \"\$1\" in new-session|set-option|kill-session) exit 0;; *) exit 1;; esac" > "$XS/home/.local/bin/tmux"
+  chmod +x "$XS/home/.local/bin/claude" "$XS/home/.local/bin/tmux"
+  print '{}' > "$XS/q/fork-tree.json"; : > "$XS/q/fork.log"
+  # ⚠️ CLAUDE_CODE_SESSION_ID SZANDEKOSAN NINCS: a pillanatkep-fork nem az elo
+  # sessionbol dolgozik — ha megis azt hasznalna, itt elbukna.
+  _sf() { : > "$XS/tmux.log"; env -u CLAUDE_CODE_SESSION_ID HOME="$XS/home" CLAUDE_AGENT_NAME="$1" \
+            CLAUDE_AGENT_QUEUE="$XS/q" FORK_TREE="$XS/q/fork-tree.json" CLAUDE_AGENT_ROOT="$XS/proj" \
+            BRIDGE_STATE="$XS/state.json" BRIDGE_CONFIG="$XS/allow.json" BRIDGE_DIR="$XS/bridge" \
+            zsh "$ROOT/bin/fork-agent" "${@:2}" 2>&1 }
+  yes_ "--grant nélkül a kapcsoló nem elérhető" \
+       eval '_sf "$XSE" s0 --from-snapshot "$SID" --cwd run | grep -q "csak kísérleti felhatalmazás alatt"'
+  yes_ "pillanatkép nélküli felhatalmazással → hiba" \
+       eval '_sf "$XSE" s0 --grant xsplain --from-snapshot "$SID" --cwd run | grep -q "nem pillanatképes"'
+  yes_ "listán kívüli sid-del → hiba" \
+       eval '_sf "$XSE" s0 --grant xs1 --from-snapshot 00000000-0000-4000-8000-000000000000 --cwd run | grep -q "nincs a felhatalmazásban"'
+  yes_ "idegen végrehajtó → hiba" \
+       eval '_sf mac-main-idegen-xs s0 --grant xs1 --from-snapshot "$SID" --cwd run | grep -q "végrehajtó.*nem szerepel"'
+  yes_ "--fresh-sel együtt → hiba" \
+       eval '_sf "$XSE" s0 --grant xs1 --from-snapshot "$SID" --fresh --cwd run | grep -q "értelmetlen"'
+  is   "és egyik hibás esetben sem jött létre tmux-session" "$(grep -c '^new-session' "$XS/tmux.log")" "0"
+  # --- a jo eset
+  _so=$(_sf "$XSE" s1 --grant xs1 --from-snapshot "$SID" --cwd run)
+  # (a fork-agent minden argumentumot (qq)-val idezojelez — az osszevetes elott le)
+  _rp=$(grep '^respawn-pane' "$XS/tmux.log" | tr -d "'")
+  is   "a gyerek a pillanatképből indul (--resume <sid> --fork-session)" \
+       "$(print -r -- "$_rp" | grep -c -- "--resume $SID --fork-session")" "1"
+  is   "a gyerek neve a TARTÓ alatt van, nem a végrehajtó alatt" \
+       "$(print -r -- "$_rp" | grep -c "CLAUDE_AGENT_NAME=$XSH-s1")" "1"
+  is   "a tájékoztató szöveg a tartót nevezi meg" \
+       "$(print -r -- "$_rp" | grep -c "A(z) $XSH session beszélgetését örökölted")" "1"
+  is   "a végrehajtó neve nem szivárog a gyerekbe" "$(print -r -- "$_rp" | grep -c "$XSE")" "0"
+  is   "elbukott indítás után a hely visszajár" "$(_sq '.xgrants.xs1.used')" "0"
+  is   "a pillanatképet a fork nem módosította" \
+       "$(shasum -a 256 "$SF" | awk '{print $1}')" "$(_sq '.xgrants.xs1.snapshots[0].sha256')"
+  yes_ "a FORKED sor viszi a snapshot= és by= mezőt" \
+       grep -q 'snapshot=$SNAP_SID by=$EXECUTOR' "$ROOT/bin/fork-agent"
+  # --- a jovahagyas utan megvaltozott tartalom
+  print '{"type":"user","sessionId":"'"$SID"'","message":{"content":"BEULTETVE"}}' >> "$SF"
+  yes_ "a jóváhagyás óta megváltozott pillanatképből nem forkol" \
+       eval '_sf "$XSE" s2 --grant xs1 --from-snapshot "$SID" --cwd run | grep -q "megváltozott a jóváhagyás óta"'
+  is   "és tmux-session sem jött létre" "$(grep -c '^new-session' "$XS/tmux.log")" "0"
+  # --- az agent-exp-fork atengedi a kapcsolot (a --grant-ot o teszi hozza)
+  yes_ "az agent-exp-fork átadja a --from-snapshot-ot" \
+       eval 'env -u CLAUDE_CODE_SESSION_ID HOME="$XS/home" CLAUDE_AGENT_NAME="$XSE" CLAUDE_AGENT_QUEUE="$XS/q" FORK_TREE="$XS/q/fork-tree.json" CLAUDE_AGENT_ROOT="$XS/proj" BRIDGE_STATE="$XS/state.json" BRIDGE_CONFIG="$XS/allow.json" zsh "$ROOT/bin/agent-exp-fork" xs1 s3 --from-snapshot 00000000-0000-4000-8000-000000000000 --cwd run 2>&1 | grep -q "nincs a felhatalmazásban"'
+  tmux kill-session -t "=agent-$XSH" 2>/dev/null
+  rm -rf "$XS"; trap 'rm -rf "$TMP"' EXIT
+else
+  print "  \033[33m⚠\033[0m tmux nincs — a pillanatkép-fork tesztjei kimaradnak"
+  SMOKE_SKIPPED=$(( SMOKE_SKIPPED + 37 ))
+fi
+
 print "\n\033[1mkézbesítés-ellenőrzés: üres bizonyíték ≠ siker\033[0m"
 # ⚠️⚠️ 2026-10-02: a `find … -print0 | xargs -0 grep -q` pipeline URES find-ra
 # **0-val** lep ki (a BSD xargs el sem inditja a parancsot), tehat a regi
@@ -1699,7 +1828,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=431}
+: ${SMOKE_EXPECTED:=468}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

@@ -457,6 +457,7 @@ while read -r u; do
           _xtxt="$(t m.xapproved "$id" "$(_xg .requested_by)" "$(_xg '.parents | join(", ")')" \
                     "$(_xg .forks)" "$(_xg .hours)" "$(_xg .parallel)" "$(_xg .model)" "$_xna" \
                     "$(bridge_grant_human "$(_xg .until)")")"
+          _xs=$(xgrant_snapshot_line "$_xr"); [[ -n "$_xs" ]] && _xtxt+=$'\n'"$_xs"
           tg_edit_message "$cqmid" "$_xtxt" "$_xk" >/dev/null 2>&1 \
             || tg_send_message "$_xtxt" "$_xk" >/dev/null 2>&1
           bridge_forget_msg "$id"

@@ -150,6 +150,7 @@ BRIDGE_MSG=(
   # ⚠️ A JOVAHAGYOTT uzenet MEGTARTJA a parametereket. Az elso valtozat helyben
   # atirta a gombos uzenetet egy rovid "engedelyezve"-re, es ezzel ELTUNTETTE, mire
   # mondtal igent — a felhasznalo a chatben mar nem latta a szamokat (2026-10-03).
+  m.xsnap       '📸 <b>pillanatképből</b>: %s db · tartó: <code>%s</code>\n%s|📸 <b>from snapshots</b>: %s · holder: <code>%s</code>\n%s'
   m.xapproved   '✅ <b>Kísérlet engedélyezve</b> — <code>%s</code>\nkérvényező: <code>%s</code>\nszülők: <code>%s</code>\n<b>%s fork</b> · <b>%s óra</b> · <b>%s párhuzamosan</b>\nmodell: <code>%s</code> · visszakérdezés: %s\nlejár: <b>%s</b>|✅ <b>Experiment approved</b> — <code>%s</code>\nrequested by: <code>%s</code>\nparents: <code>%s</code>\n<b>%s forks</b> · <b>%s hours</b> · <b>%s in parallel</b>\nmodel: <code>%s</code> · asking back: %s\nexpires: <b>%s</b>'
   m.xcaption    '🧪 <b>Kísérlet-felhatalmazás</b> — <code>%s</code> · %s fork · %s óra · %s párhuzamosan|🧪 <b>Experiment authorisation</b> — <code>%s</code> · %s forks · %s hours · %s in parallel'
   m.xmilestone  '🧪 <code>%s</code>: <b>%s%%</b> — %s/%s fork elindult, most %s fut. Lejár: %s|🧪 <code>%s</code>: <b>%s%%</b> — %s/%s forks started, %s running now. Expires: %s'
@@ -537,8 +538,60 @@ xgrant_from_request() {              # $1 = id, $2 = normalizalt keres (mode=exp
 # A HELYFOGLALAS — atomikusan. Ket parhuzamos fork kulonben mindketten szabad
 # helyet latnanak, es a parhuzamos keret tullepne. Ellenorzes + noveles EGY zar alatt.
 # Kilepes: 0 = siker, 75 = most nincs hely (parhuzamos keret tele — varj), 1 = nem.
-xgrant_claim() {                     # $1=id $2=szulo $3=modell $4=no_ask $5=perm $6=gyerek
-  local id="$1" par="$2" mod="$3" na="$4" pm="$5" kid="$6" r now
+# --- PILLANATKEP (kiserleti fork befagyasztott szulobol) ---------------------
+# ITT el, nem az _agent-lib.sh-ban: a kervény-validalas (ez a fajl) nem tolti
+# be az _agent-lib-et, a fork-agent viszont a pillanatkep-agban ezt betolti.
+# A pillanatkep egy Claude Code session-fajl (`<sid>.jsonl`) a szokasos helyen:
+# ~/.claude/projects/<cwd-slug>/<sid>.jsonl. A spawner CSAK OLVASSA — nem masol,
+# nem ir at semmit. Az ellenorzes harom resze:
+#   1. pontosan EGY ilyen fajl van (ket talalatnal nem tudhatjuk, melyiket tolti
+#      be a CLI — az nem pillanatkep, hanem talalgatas)
+#   2. ervenyes jsonl: minden sor JSON-objektum
+#   3. a belso azonosito a fajlnevvel egyezik — minden `sessionId`/`session_id`
+#      mezo a sid. Egy masolat, amelyben ez nincs atirva, felig a REGI sessionre
+#      mutat; azt nem engedjuk tovabb.
+snapshot_valid_sid() { [[ "$1" =~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' ]]; }
+
+snapshot_locate() {                  # $1 = sid -> stdout: a fajl utvonala
+  local sid="$1"
+  snapshot_valid_sid "$sid" || { print -u2 "érvénytelen pillanatkép-azonosító (uuid kell): $sid"; return 1 }
+  local -a hits; hits=("$HOME/.claude/projects"/*/"$sid.jsonl"(N.))
+  if (( ${#hits} == 0 )); then
+    print -u2 "a pillanatkép nem található: ~/.claude/projects/*/$sid.jsonl"; return 1
+  elif (( ${#hits} > 1 )); then
+    print -u2 "a pillanatkép többször szerepel (nem egyértelmű, melyiket töltené be a CLI): ${(j:, :)hits}"; return 1
+  fi
+  print -r -- "${hits[1]}"
+}
+
+snapshot_verify() {                  # $1 = fajl, $2 = sid
+  local f="$1" sid="$2"
+  [[ -s "$f" ]] || { print -u2 "a pillanatkép üres: $f"; return 1 }
+  # ⚠️ -s (slurp): egy rossz sor az EGESZ olvasast elbuktatja, vagyis a
+  # "minden sor ervenyes" itt nem kulon ciklus, hanem a jq hibaja.
+  jq -e -s 'length > 0 and all(.[]; type == "object")' "$f" >/dev/null 2>&1 \
+    || { print -u2 "a pillanatkép nem érvényes jsonl (minden sornak JSON-objektumnak kell lennie): $f"; return 1 }
+  jq -e -s --arg s "$sid" '
+      any(.[]; .sessionId == $s)
+      and all(.[]; ((has("sessionId")  | not) or .sessionId  == $s)
+               and ((has("session_id") | not) or .session_id == $s))' "$f" >/dev/null 2>&1 \
+    || { print -u2 "a pillanatkép belső azonosítója nem a fájlnév ($sid) — a sessionId/session_id mezőket át kell írni: $f"; return 1 }
+}
+
+snapshot_sha256() { shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'; }
+
+# A pillanatkep-sor a gombos (es a jovahagyott) uzenetre. Ures, ha a
+# felhatalmazas nem pillanatkepes — igy a regi uzenetek bajtra ugyanazok.
+xgrant_snapshot_line() {             # $1 = keres/felhatalmazas JSON
+  local j="$1" n
+  n=$(print -r -- "$j" | jq -r '(.snapshots // []) | length')
+  (( n > 0 )) || return 0
+  t m.xsnap "$n" "$(print -r -- "$j" | jq -r .snapshot_holder)" \
+    "$(print -r -- "$j" | jq -r '[.snapshots[] | "<code>\(.sid[0:8])</code> · sha256 <code>\(.sha256[0:12])</code>"] | join("\n")')"
+}
+
+xgrant_claim() {                     # $1=id $2=szulo $3=modell $4=no_ask $5=perm $6=gyerek [$7=pillanatkep-sid]
+  local id="$1" par="$2" mod="$3" na="$4" pm="$5" kid="$6" snap="${7:-}" r now
   state_lock || { print -u2 "az állapot-lock nem szerezhető meg"; return 1 }
   if ! r=$(xgrant_get "$id"); then state_unlock; print -u2 "nincs ilyen kísérlet-felhatalmazás: $id"; return 1; fi
   now=$(date -u +%s)
@@ -560,6 +613,10 @@ xgrant_claim() {                     # $1=id $2=szulo $3=modell $4=no_ask $5=per
   elif [[ "$pm" == "bypassPermissions" ]]; then why="emelt jogosultság felhatalmazás alatt nem adható"
   elif [[ "$pm" != "$(print -r -- "$r" | jq -r '.permission_mode // "auto"')" ]]; then
     why="a jogosultsági mód eltér: $pm (a felhatalmazás: $(print -r -- "$r" | jq -r '.permission_mode // "auto"'))"
+  elif [[ -n "$snap" ]] && ! print -r -- "$r" | jq -e --arg s "$snap" '[(.snapshots // [])[].sid] | index($s)' >/dev/null; then
+    why="a pillanatkép ($snap) nincs a felhatalmazásban"
+  elif [[ -n "$snap" && "$par" != "$(print -r -- "$r" | jq -r '.snapshot_holder // empty')" ]]; then
+    why="pillanatkép-fork szülője csak a felhatalmazás snapshot_holder-e lehet (kapott: $par)"
   elif (( used >= forks ));      then why="elfogyott: $used/$forks fork már elindult"
   fi
   if [[ -n "$why" ]]; then state_unlock; print -u2 "$why"; return 1; fi
@@ -1030,10 +1087,36 @@ validate_request() {                 # $1 = kérés-fájl
     done
     xpu=$(jq -r '.purpose // ""' "$f")
     (( $(printf %s "$xpu" | wc -c) <= 500 )) || { print -u2 "purpose: legfeljebb 500 bájt"; return 1 }
+    # --- PILLANATKEPEK (opcionalis) -------------------------------------------
+    # A kervenyezo csak sid-eket ad. A tartalmat ITT rogzitjuk sha256-tal: a
+    # felhasznalo ezt hagyja jova, es a fork-agent minden fork elott ujraszamolja.
+    # A sid ugyanis csak fajlnev — hash nelkul a jovahagyas utan barmi kerulhetne
+    # moge. A tarto (snapshot_holder) a gyerekek szulo-neve; futnia kell, ezert a
+    # szulok kozott kell lennie (azokat fent mar ellenoriztuk).
+    local xsn="[]" xho="" sj sid sf serr
+    sj=$(jq -c '.snapshots // empty' "$f")
+    if [[ -n "$sj" ]]; then
+      print -r -- "$sj" | jq -e 'type == "array" and length >= 1 and length <= 20
+                                 and all(.[]; type == "string") and (unique | length) == length' >/dev/null 2>&1 \
+        || { print -u2 "snapshots: 1-20 elemű, ismétlés nélküli sid-lista kell"; return 1 }
+      xho=$(jq -r '.snapshot_holder // empty' "$f")
+      [[ -n "$xho" ]] || { print -u2 "snapshot_holder: pillanatképes felhatalmazáshoz kötelező (a gyerekek szülő-neve)"; return 1 }
+      print -r -- "$pj" | jq -e --arg h "$xho" 'index($h)' >/dev/null \
+        || { print -u2 "snapshot_holder ($xho) a parents között kell szerepeljen"; return 1 }
+      for sid in ${(f)"$(print -r -- "$sj" | jq -r '.[]')"}; do
+        sf=$(snapshot_locate "$sid" 2>&1) || { print -u2 "$sf"; return 1 }
+        serr=$(snapshot_verify "$sf" "$sid" 2>&1) || { print -u2 "$serr"; return 1 }
+        xsn=$(print -r -- "$xsn" | jq -c --arg s "$sid" --arg h "$(snapshot_sha256 "$sf")" '. + [{sid:$s, sha256:$h}]')
+      done
+    elif jq -e 'has("snapshot_holder")' "$f" >/dev/null 2>&1; then
+      print -u2 "snapshot_holder csak snapshots mellett értelmes"; return 1
+    fi
     jq -n --argjson ps "$pj" --argjson fk "$xf" --argjson hr "$xh" --argjson pa "$xpar" \
           --arg m "$xm" --argjson na "$xna" --arg rb "$xrb" --arg pu "$xpu" --arg pm "$xpm" \
+          --argjson sn "$xsn" --arg ho "$xho" \
       '{mode:"experiment", target:$rb, parents:$ps, forks:$fk, hours:$hr, parallel:$pa,
-        model:$m, no_ask:$na, permission_mode:$pm, requested_by:$rb, purpose:$pu}'
+        model:$m, no_ask:$na, permission_mode:$pm, requested_by:$rb, purpose:$pu}
+       + (if ($sn | length) > 0 then {snapshots:$sn, snapshot_holder:$ho} else {} end)'
     return 0
   fi
 
@@ -1754,6 +1837,11 @@ summary_text() {                     # $1 = id, $2 = normalizált kérés JSON
     print -r -- "model:        $(f .model)"
     print -r -- "no_ask:       $(f .no_ask)"
     print -r -- "purpose:      $(f .purpose)"
+    if [[ "$(f '(.snapshots // []) | length')" != 0 ]]; then
+      print -r -- "snapshot_holder: $(f .snapshot_holder)"
+      print -r -- "snapshots (sid  sha256):"
+      f '.snapshots[] | "  \(.sid)  \(.sha256)"'
+    fi
     return 0
   fi
 

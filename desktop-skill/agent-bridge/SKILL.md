@@ -313,6 +313,17 @@ package as it is — there is no "approve, but only 50" button. A request above 
 sanity ceiling in `bridge-allow.json` (default 500 forks / 24 h / 10 parallel) is
 rejected before it reaches the phone, and `bypassPermissions` is never allowed.
 
+**Forking from a frozen snapshot** (only when the protocol asks for it): add
+`"snapshots": ["<sid>", …]` (1–20 session ids) and `"snapshot_holder": "<name>"`.
+The holder must be one of `parents`; it is the parent name every child gets, so
+it should be neutral. Each snapshot must already exist as exactly one file
+`~/.claude/projects/<cwd-slug>/<sid>.jsonl` with every `sessionId` set to the sid —
+otherwise the request is refused. The bridge records each file's sha256 at
+arrival, and the user sees it on the approval message; a snapshot changed after
+approval cannot be forked from. The executing agent then adds
+`--from-snapshot <sid>` to its `agent-exp-fork` call. You do not build snapshots
+yourself — that is the executing agent's job, before it files.
+
 **3. Wait for the final status** like any other request. On approval it is
 `spawned`, with the message `kísérlet-felhatalmazás érvényes: <id> — lejár …`.
 

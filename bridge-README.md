@@ -424,6 +424,52 @@ apply. The system-wide rate limit (10 forks / 10 minutes) does not — that one 
 against unapproved runaway forking, and an experiment using it would block every
 other agent's forks for hours. The authorisation's own limits are tighter anyway.
 
+### Forking from a frozen snapshot — `snapshots`, `--from-snapshot`
+
+A measurement that compares inheritance conditions needs every child to start from
+the **same** parent state. Forking from a live parent cannot give that: each fork
+turn lands in the parent's conversation, so the tenth child inherits the nine fork
+prompts before it. Instead the parent is frozen into a session file, and every child
+forks from that file.
+
+Add two fields to the request:
+
+```json
+{
+  "snapshots":       ["7f3c1a2b-4d5e-4f60-8a9b-0c1d2e3f4a5b"],
+  "snapshot_holder": "mac-main-dkutatas-hold"
+}
+```
+
+| field | note |
+|---|---|
+| `snapshots` | 1–20 session ids. Each must be **exactly one** file at `~/.claude/projects/<cwd-slug>/<sid>.jsonl`, valid jsonl, with every `sessionId`/`session_id` set to the sid (a copy that still points at the old session is refused). |
+| `snapshot_holder` | the parent **name** the children get: in the fork tree, in `fork.log` and in the child's orientation text. Required with `snapshots`, and it must be one of `parents`. Pick a neutral name — it reaches every child's prompt. |
+
+When the request arrives, the bridge records each snapshot's **sha256**; the
+approval message shows the id and the start of the hash. The sid is only a file
+name — without the hash anything could be put behind it after the approval.
+
+Then fork with:
+
+```bash
+/Users/<you>/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> --from-snapshot <sid> --cwd … [<prompt>]
+```
+
+On every fork, `fork-agent` checks, in addition to the usual limits:
+
+- the sid is in the authorisation's `snapshots`
+- the caller is one of `parents` or the `requested_by` agent
+- the file is still unique and valid, and its sha256 still matches the approved one —
+  a snapshot changed after approval is refused
+- the child forks with `--resume <sid> --fork-session` under the holder's name;
+  `fork.log` gets `snapshot=<sid> by=<caller>`
+
+The snapshot is **only read** — `fork-agent` never copies or edits it. Building the
+copy (new sid, `sessionId`/`cwd` rewritten) is the experiment's job. `--from-snapshot`
+without `--grant`, or with `--fresh`, is an error. The depth limit counts from the
+holder.
+
 **5. While it runs** — Telegram reports at 25 / 50 / 75 / 100 % and on expiry (not
 per fork; 290 messages would be noise). Every report carries a **Stop** button: no new
 forks start, running ones continue.
@@ -943,6 +989,52 @@ Amit **nem** vált ki: az önmásolás-őr és a mélységkorlát továbbra is �
 rendszerszintű sebességkorlát (10 fork / 10 perc) viszont nem — az a jóváhagyatlan,
 elszabadult forkolás ellen van, és ha egy kísérlet használná, órákon át minden más
 agent forkját blokkolná. A felhatalmazás saját korlátai amúgy is szorosabbak.
+
+#### Fork befagyasztott pillanatképből — `snapshots`, `--from-snapshot`
+
+Ha egy mérés öröklési feltételeket hasonlít össze, minden gyereknek **ugyanabból** a
+szülő-állapotból kell indulnia. Élő szülőből forkolva ez nem megy: minden fork-forduló
+bekerül a szülő beszélgetésébe, így a tizedik gyerek már a kilenc korábbi fork-promptot
+is örökli. Ehelyett a szülőt egy session-fájlba fagyasztjuk, és minden gyerek ebből a
+fájlból forkol.
+
+A kérvényhez két mező jön:
+
+```json
+{
+  "snapshots":       ["7f3c1a2b-4d5e-4f60-8a9b-0c1d2e3f4a5b"],
+  "snapshot_holder": "mac-main-dkutatas-hold"
+}
+```
+
+| mező | megjegyzés |
+|---|---|
+| `snapshots` | 1–20 session-azonosító. Mindegyikhez **pontosan egy** fájl tartozzon itt: `~/.claude/projects/<cwd-slug>/<sid>.jsonl`. Érvényes jsonl legyen, és minden `sessionId`/`session_id` mezője a sid-re mutasson (a régi sessionre mutató másolatot elutasítjuk). |
+| `snapshot_holder` | a gyerekek szülő-**neve**: ez kerül a fork-fába, a `fork.log`-ba és a gyerek tájékoztató szövegébe. A `snapshots` mellé kötelező, és a `parents` között kell szerepelnie. Semleges nevet válassz, mert minden gyerek promptjába bekerül. |
+
+A kérvény beérkezésekor a híd minden pillanatkép **sha256**-ját rögzíti; a jóváhagyó
+üzenet mutatja az azonosítót és a hash elejét. A sid ugyanis csak fájlnév: hash nélkül a
+jóváhagyás után bármi kerülhetne mögé.
+
+Forkolni így kell:
+
+```bash
+/Users/<te>/.claude/agent-queue/bin/agent-exp-fork <id> <suffix> --from-snapshot <sid> --cwd … [<prompt>]
+```
+
+A `fork-agent` minden forknál a szokásos korlátok mellett ezt is ellenőrzi:
+
+- a sid benne van-e a felhatalmazás `snapshots` listájában
+- a hívó a `parents` egyike-e, vagy ő a `requested_by`
+- a fájl továbbra is egyértelmű és érvényes-e, és a sha256-ja egyezik-e a
+  jóváhagyottal — a jóváhagyás után megváltozott pillanatképből nem forkol
+- a gyerek `--resume <sid> --fork-session`-nel, a tartó neve alatt indul; a `fork.log`
+  sorába `snapshot=<sid> by=<hívó>` kerül
+
+A pillanatképet a spawner **csak olvassa**: nem másol és nem ír át semmit. A másolat
+elkészítése (új sid, átírt `sessionId`/`cwd`) a kísérlet dolga. A `--from-snapshot`
+`--grant` nélkül vagy `--fresh`-sel együtt hiba. A mélységkorlát a tartó mélységéből
+számol.
 
 **5. Futás közben** — Telegram 25 / 50 / 75 / 100 %-nál és lejáratkor szól (nem
 forkonként; 290 üzenet zaj lenne). Minden jelentésen ott a **Leállítás** gomb: új fork

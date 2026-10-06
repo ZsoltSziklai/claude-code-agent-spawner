@@ -37,12 +37,15 @@ TMUX_BIN=$(command -v tmux) || die "tmux not found"
 CLAUDE=$(command -v claude) || die "claude not found"
 
 # ---------------------------------------------------------------------------
-# Szülő azonosítása — forkolni csak élő sessionből lehet
+# Szülő azonosítása — forkolni élő sessionből lehet, vagy (kísérleti
+# felhatalmazás alatt) egy jóváhagyott pillanatképből: --from-snapshot
 # ---------------------------------------------------------------------------
 PARENT_SID="${CLAUDE_CODE_SESSION_ID:-}"
 PARENT_NAME="${CLAUDE_AGENT_NAME:-}"
-[[ -n "$PARENT_SID"  ]] || die "nincs CLAUDE_CODE_SESSION_ID — forkolni csak élő Claude Code sessionből lehet"
+# A hivo (vegrehajto) azonositasa MINDIG kell — pillanatkep-forknal is: o az,
+# aki a felhatalmazast hasznalja, es az auditnak tudnia kell, ki volt.
 [[ -n "$PARENT_NAME" ]] || die "nincs CLAUDE_AGENT_NAME — ez a session nem az agent-rendszerből indult"
+EXECUTOR="$PARENT_NAME"
 
 # ---------------------------------------------------------------------------
 # Argumentumok
@@ -53,7 +56,10 @@ SUFFIX=""; WANT_WT=false; REQ_CWD=""; MODEL="opus"; EFFORT="high"; MODEL_SET=fal
 # SZEREPET folytatta a sajat feladata helyett (714 soros orokolt atirat, a
 # feladat a 703. sorban), es a rendszer-prompt lefokozo mondata nem volt eleg
 # ellene. Az orokles hasznos, de legyen TUDATOS valasztas: --summary / --inherit.
-RESUME_MODE="none"; PROMPT=""; NO_ASK=false
+RESUME_MODE="none"; PROMPT=""; NO_ASK=false; FRESH_SET=false
+# Pillanatkep-fork (csak --grant alatt): a szulo egy BEFAGYASZTOTT session-fajl,
+# nem az elo session. Lasd lent, a felhatalmazas-blokk elott.
+SNAP_SID=""
 # A CLI sugoja szerint az ALIAS ("opus") mindig a legfrissebb modellt jelenti,
 # a rogzitett azonosito ("claude-opus-5") viszont elavul. Ezert az alias a
 # default; rogziteni tovabbra is lehet, ha valaki szandekosan akarja.
@@ -76,7 +82,7 @@ while (( $# )); do
       # Merve: egy 714 soros orokolt atiratban a feladat a 703. sorban allt, es a
       # gyerek nem azt csinalta, hanem a szulo szerepet folytatta. A rendszer-
       # prompt lefokozo mondata ODAERT, es NEM volt eleg ellene.
-      --fresh)     RESUME_MODE="none"; shift ;;
+      --fresh)     RESUME_MODE="none"; FRESH_SET=true; shift ;;
       # A teljes orokles mostantol kifejezett keres (regen ez volt az alap).
       --inherit)   RESUME_MODE="full"; shift ;;
     # A hidon inditott agentnek nincs kihez visszakerdeznie: a sessionjet senki
@@ -90,11 +96,43 @@ while (( $# )); do
     # KISERLET-FELHATALMAZAS alatt: gombnyomas nelkul indul, de csak a jovahagyott
     # kereten belul (szulo, modell, --no-ask, darabszam, parhuzamossag, lejarat).
     --grant)           GRANT="${2:?--grant needs a value}"; shift 2 ;;
+    --from-snapshot)   SNAP_SID="${2:?--from-snapshot needs a session id}"; shift 2 ;;
     --*)         die "ismeretlen kapcsoló: $1" ;;
     *)           if [[ -z "$SUFFIX" ]]; then SUFFIX="$1"; else PROMPT="$1"; fi; shift ;;
   esac
 done
-[[ -n "$SUFFIX" ]] || die "usage: fork-agent <suffix> [--worktree] [--cwd D] [--model M] [--effort E] [--permission-mode P] [--summary|--inherit|--fresh] [--no-ask] [--requested-by AGENT] [--grant ID] [<prompt>]"
+[[ -n "$SUFFIX" ]] || die "usage: fork-agent <suffix> [--worktree] [--cwd D] [--model M] [--effort E] [--permission-mode P] [--summary|--inherit|--fresh] [--no-ask] [--requested-by AGENT] [--grant ID [--from-snapshot SID]] [<prompt>]"
+
+# --- PILLANATKEP-FORK -----------------------------------------------------------
+# A kontextus-orokles kiserlet befagyasztott szulobol forkol: minden gyerek
+# UGYANABBOL a session-fajlbol indul, igy nem latja a testverei fork-promptjait.
+# Ez KIMONDOTT bemenet, nem az env felulirasa — es csak ott el, ahol az ember
+# jovahagyta: egy kiserleti felhatalmazas `snapshots` listajaban, sha256-tal.
+#   - a szulo-sid a pillanatkepe (ebbol megy a --resume --fork-session)
+#   - a szulo-NEV a felhatalmazas `snapshot_holder`-e, NEM a vegrehajtoe: a nev a
+#     gyerek tajekoztato szovegebe kerul, es a vegrehajto neve (pl. "…-kontextus-
+#     orokles") torzitana a kiserletet
+#   - a fajlt CSAK olvassuk; ha a tartalma a jovahagyas ota valtozott, megallunk
+if [[ -n "$SNAP_SID" ]]; then
+  [[ -n "$GRANT" ]] || die "--from-snapshot csak kísérleti felhatalmazás alatt használható (--grant)"
+  [[ "$GRANT" =~ '^[A-Za-z0-9._-]{1,48}$' ]] || die "érvénytelen felhatalmazás-azonosító: $GRANT"
+  $FRESH_SET && die "--from-snapshot és --fresh együtt értelmetlen: a pillanatkép-fork örököl"
+  source "$(dirname "${(%):-%x}")/_bridge-lib.sh" || die "a híd-könyvtár nem töltődött be"
+  _SREC=$(xgrant_get "$GRANT") || die "nincs ilyen kísérlet-felhatalmazás: $GRANT"
+  _SHASH=$(print -r -- "$_SREC" | jq -r --arg s "$SNAP_SID" '(.snapshots // [])[] | select(.sid == $s) | .sha256')
+  [[ -n "$_SHASH" ]] || die "a pillanatkép ($SNAP_SID) nincs a felhatalmazásban ($GRANT): $(print -r -- "$_SREC" | jq -r '[(.snapshots // [])[].sid] | if length == 0 then "a felhatalmazás nem pillanatképes" else join(", ") end')"
+  _HOLDER=$(print -r -- "$_SREC" | jq -r '.snapshot_holder // empty')
+  [[ -n "$_HOLDER" ]] || die "a felhatalmazásban nincs snapshot_holder ($GRANT)"
+  print -r -- "$_SREC" | jq -e --arg e "$EXECUTOR" '(.parents | index($e)) or .requested_by == $e' >/dev/null \
+    || die "a végrehajtó ($EXECUTOR) nem szerepel a felhatalmazásban (sem szülőként, sem kérvényezőként)"
+  _SFILE=$(snapshot_locate "$SNAP_SID" 2>&1) || die "$_SFILE"
+  _serr=$(snapshot_verify "$_SFILE" "$SNAP_SID" 2>&1) || die "$_serr"
+  [[ "$(snapshot_sha256 "$_SFILE")" == "$_SHASH" ]] \
+    || die "a pillanatkép tartalma megváltozott a jóváhagyás óta (sha256 eltér): $_SFILE"
+  PARENT_NAME="$_HOLDER"; PARENT_SID="$SNAP_SID"
+  [[ "$RESUME_MODE" == none ]] && RESUME_MODE="full"
+fi
+[[ -n "$PARENT_SID" ]] || die "nincs CLAUDE_CODE_SESSION_ID — forkolni csak élő Claude Code sessionből lehet"
 
 # ⚠️ A HAROM validator (spawner, hid, fork-agent) PERMISSION-listajanak is
 # egyeznie kell — ugyanaz a drift-osztaly, ami 2026-08-26-on a modell-listaknal
@@ -264,7 +302,7 @@ done
 # Ha kesobb barmi elbukik, a kilepesi csapda visszaadja a helyet — kulonben a
 # felhatalmazas elbukott inditasokra fogyna el.
 if [[ -n "$GRANT" ]]; then
-  xgrant_claim "$GRANT" "$PARENT_NAME" "$MODEL" "$NO_ASK" "$PERM" "$NAME"; _xrc=$?
+  xgrant_claim "$GRANT" "$PARENT_NAME" "$MODEL" "$NO_ASK" "$PERM" "$NAME" "$SNAP_SID"; _xrc=$?
   if (( _xrc == 75 )); then
     print -u2 "fork-agent: a párhuzamos keret tele — próbáld újra, amikor egy gyerek lezárult"
     exit 75
@@ -525,7 +563,7 @@ fi
 # A melysegkorlat csak akkor er valamit, ha az elt rogzitjuk is.
 fork_tree_record "$NAME" "$PARENT_NAME" || log "WARN a fork-fa rogzitese nem sikerult: $NAME"
 _XDONE=true
-log "FORKED $NAME from=$PARENT_NAME sid=$PARENT_SID cwd=$RUN_CWD worktree=$WANT_WT resume=$RESUME_MODE${GRANT:+ grant=$GRANT}"
+log "FORKED $NAME from=$PARENT_NAME sid=$PARENT_SID cwd=$RUN_CWD worktree=$WANT_WT resume=$RESUME_MODE${GRANT:+ grant=$GRANT}${SNAP_SID:+ snapshot=$SNAP_SID by=$EXECUTOR}"
 print "fork kész: $NAME"
 print "  szülő      : $PARENT_NAME ($PARENT_SID)"
 print "  cwd        : $RUN_CWD"

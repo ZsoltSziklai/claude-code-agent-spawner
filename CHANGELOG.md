@@ -5,6 +5,36 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-10-06
+
+### Added
+
+- **`--from-snapshot <sid>`: fork from a frozen parent instead of the live session.**
+  An experiment comparing inheritance conditions needs every child to start from the
+  same parent state; forking a live parent cannot give that, because each fork turn
+  lands in the parent's conversation and later children inherit the earlier fork
+  prompts. Under an experiment authorisation the parent can now be a session file
+  (`~/.claude/projects/<cwd-slug>/<sid>.jsonl`), and every child forks from it with
+  `--resume <sid> --fork-session`.
+  - Only under an authorisation whose new `snapshots` list contains the sid; without
+    `--grant` the switch is an error, and so is `--fresh` with it.
+  - The bridge records each snapshot's **sha256** when the request arrives, the
+    approval message shows it, and `fork-agent` recomputes it before every fork: a
+    snapshot changed after approval is refused. The sid alone is only a file name.
+  - The file is only read. It must be exactly one file, valid jsonl, with every
+    `sessionId`/`session_id` rewritten to the sid.
+  - The children's parent name is the authorisation's `snapshot_holder` (one of
+    `parents`), not the caller's — the name reaches every child's orientation text,
+    and the caller's name would bias the measurement. The caller must be a parent or
+    the requester; `fork.log` records `snapshot=<sid> by=<caller>`.
+  - Passes through `agent-exp-fork` unchanged. The default (fresh session), the live
+    fork, the model whitelist and the depth limit are unchanged.
+
+### Changed
+
+- 468 assertions in the smoke test (was 431); every new guard is covered by a
+  mutation that the suite catches.
+
 ## [1.5.3] — 2026-10-06
 
 ### Fixed
@@ -440,6 +470,36 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.6.0] — 2026-10-06
+
+#### Új
+
+- **`--from-snapshot <sid>`: fork befagyasztott szülőből az élő session helyett.** Ha
+  egy kísérlet öröklési feltételeket hasonlít össze, minden gyereknek ugyanabból a
+  szülő-állapotból kell indulnia. Élő szülőből forkolva ez nem megy: minden fork-forduló
+  bekerül a szülő beszélgetésébe, és a későbbi gyerekek a korábbi fork-promptokat is
+  öröklik. Kísérleti felhatalmazás alatt a szülő most már lehet egy session-fájl
+  (`~/.claude/projects/<cwd-slug>/<sid>.jsonl`), és minden gyerek ebből forkol
+  (`--resume <sid> --fork-session`).
+  - Csak olyan felhatalmazás alatt működik, amelynek új `snapshots` listájában szerepel
+    a sid. `--grant` nélkül a kapcsoló hiba, és `--fresh`-sel együtt is.
+  - A híd a kérvény beérkezésekor rögzíti minden pillanatkép **sha256**-ját, a jóváhagyó
+    üzenet mutatja, a `fork-agent` pedig minden fork előtt újraszámolja: a jóváhagyás
+    után megváltozott pillanatképből nem forkol. A sid önmagában csak fájlnév.
+  - A fájlt csak olvassuk. Pontosan egy fájl legyen, érvényes jsonl, és minden
+    `sessionId`/`session_id` mezője a sid-re legyen átírva.
+  - A gyerekek szülő-neve a felhatalmazás `snapshot_holder`-e (a `parents` egyike), nem
+    a hívóé: a név minden gyerek tájékoztató szövegébe bekerül, és a hívó neve
+    torzítaná a mérést. A hívó csak szülő vagy a kérvényező lehet; a `fork.log`-ba
+    `snapshot=<sid> by=<hívó>` kerül.
+  - Az `agent-exp-fork` változatlanul továbbadja. Az alapértelmezés (friss session), az
+    élő fork, a modell-fehérlista és a mélységkorlát nem változott.
+
+#### Változott
+
+- 468 állítás a füst-tesztben (eddig 431); minden új őrt lefed egy mutáció, amit a
+  suite elkap.
 
 ### [1.5.3] — 2026-10-06
 
@@ -890,3 +950,4 @@ jóváhagyással.
 [1.5.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.1
 [1.5.2]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.2
 [1.5.3]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.3
+[1.6.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.0
