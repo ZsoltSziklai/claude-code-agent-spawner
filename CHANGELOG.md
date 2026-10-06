@@ -5,6 +5,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] — 2026-10-06
+
+### Fixed
+
+- **A false `PROMPT-LOST` for any working directory with an accent, an underscore or
+  other punctuation.** Delivery is verified by finding the agent's transcript, and
+  the transcript directory name was derived by replacing only `/` and `.` with `-`.
+  Claude Code replaces **every** non-alphanumeric character
+  (`e.replace(/[^a-zA-Z0-9]/g, "-")`, truncated with a hash above 200 characters), so
+  for `~/ClaudeProjects/_KUTATÁS` we looked in `…-_KUTATÁS` while the real directory
+  is `…--KUTAT-S`. The task had arrived, the log said it had not — and after a failed
+  check the sender **sends the task a second time** (this time it did not get in, by
+  luck). The derivation now mirrors the CLI exactly — per character, not per byte, even
+  from a C-locale launchd job; two dashes for a character outside the BMP, as
+  JavaScript does; the >200-character case found by its prefix — and the sender looks
+  up the agent's own transcript by **session id**, independent of the directory name.
+  Checked against every running agent: the old rule missed one, the new one finds all
+  seven.
+
+### Changed
+
+- 431 assertions in the smoke test (was 422).
+
 ## [1.5.2] — 2026-10-04
 
 ### Fixed
@@ -417,6 +440,29 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.5.3] — 2026-10-06
+
+#### Javítva
+
+- **Hamis `PROMPT-LOST` minden olyan munkakönyvtárnál, amiben ékezet, aláhúzás vagy
+  más írásjel van.** A kézbesítést az agent átiratának megtalálásával igazoljuk, és az
+  átirat-könyvtár nevét úgy képeztük, hogy csak a `/`-t és a `.`-t cseréltük `-`-re. A
+  Claude Code viszont **minden** nem-alfanumerikus karaktert cserél
+  (`e.replace(/[^a-zA-Z0-9]/g, "-")`, 200 karakter fölött hash-sel csonkolva), így a
+  `~/ClaudeProjects/_KUTATÁS`-nál a `…-_KUTATÁS`-ban kerestük, a valódi könyvtár pedig
+  `…--KUTAT-S`. A feladat megérkezett, a napló azt mondta, hogy nem — és sikertelen
+  ellenőrzés után a küldő **másodszor is elküldi** a feladatot (ezúttal szerencsére nem
+  jutott be). A névképzés most pontosan a CLI-t követi — karakterenként, nem
+  bájtonként, C-locale-ű launchd-jobból is; a BMP-n kívüli karakter két kötőjel, ahogy
+  a JavaScriptben; a 200 feletti eset az előtagjával megtalálva —, a küldő pedig az
+  agent saját átiratát **munkamenet-azonosító** alapján keresi, a könyvtárnévtől
+  függetlenül. Minden futó agenten ellenőrizve: a régi szabály egyet nem talált meg, az
+  új mind a hetet.
+
+#### Változott
+
+- 431 állítás a füst-tesztben (eddig 422).
 
 ### [1.5.2] — 2026-10-04
 
@@ -843,3 +889,4 @@ jóváhagyással.
 [1.5.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.0
 [1.5.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.1
 [1.5.2]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.2
+[1.5.3]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.3
