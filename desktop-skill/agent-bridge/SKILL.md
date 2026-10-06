@@ -1,6 +1,6 @@
 ---
 name: agent-bridge
-description: Hand a task to a Claude Code agent running natively on the user's Mac, when this session cannot do it itself. Use whenever a task needs something the Cowork VM does not have — the real network (SSH, cluster, cPanel, home LAN, any host), macOS-native tools (launchctl, security/Keychain, tmux, the Chrome extension), a long-running background agent, or continuity with an ongoing piece of work the user has been doing on the Mac (their lab, their sites, their tooling — the current list lives in bridge/agents.json). Also use it when the user says things like "indítsd el a gépemen", "csináltasd meg a mac-mainnel", "add át a infra agentnek", or mentions the bridge, bridge/requests, or a request id. Do not use it for work this session can finish on its own inside the mounted folder.
+description: Hand a task to a Claude Code agent running natively on the user's Mac, when this session cannot do it itself. Use whenever a task needs something the Cowork VM does not have — the real network (SSH, cluster, cPanel, home LAN, any host), macOS-native tools (launchctl, security/Keychain, tmux, the Chrome extension), a long-running background agent, or continuity with an ongoing piece of work the user has been doing on the Mac (their lab, their sites, their tooling — the current list lives in bridge/agents.json). It covers forks, continuations, closes, reconnects, the one-shot experiment authorisation for many forks, and forking from frozen session snapshots. Also use it when the user says things like "indítsd el a gépemen", "csináltasd meg a mac-mainnel", "add át a infra agentnek", or mentions the bridge, bridge/requests, or a request id. Do not use it for work this session can finish on its own inside the mounted folder.
 ---
 
 # agent-bridge
@@ -322,7 +322,17 @@ otherwise the request is refused. The bridge records each file's sha256 at
 arrival, and the user sees it on the approval message; a snapshot changed after
 approval cannot be forked from. The executing agent then adds
 `--from-snapshot <sid>` to its `agent-exp-fork` call. You do not build snapshots
-yourself — that is the executing agent's job, before it files.
+yourself — that is the executing agent's job.
+
+- **Snapshots first, request second.** The hashes are taken when the request
+  arrives; a file that is missing or not yet final then makes the request fail.
+- **A snapshot is fixed for the life of the authorisation.** Editing the file
+  afterwards does not update anything — it only makes every later fork from it
+  refuse. A changed snapshot needs a new request.
+- **One authorisation is for one model.** Conditions that run on several models
+  need one request per model, each listing its own snapshots; the 1–20 limit is
+  per request.
+- Many children may fork from the same snapshot: forking does not write the file.
 
 **3. Wait for the final status** like any other request. On approval it is
 `spawned`, with the message `kísérlet-felhatalmazás érvényes: <id> — lejár …`.
@@ -336,6 +346,9 @@ facts — it needs all of them:
   of the call, so `~/…` would not match);
 - exit **75** means the parallel slots are full: wait for a child to close and
   retry. Any other refusal is final, and the message says why;
+- for a snapshot authorisation: it adds `--from-snapshot <sid>` (a sid from the
+  approved list) to every call; the children get the holder's name as parent, and
+  a snapshot whose content changed since approval is refused;
 - the authorisation enforces parent, model, `--no-ask`, the count, the parallel
   cap and the expiry — a fork that does not fit is refused, not adjusted;
 - the user is told at 25 / 50 / 75 / 100 % and on expiry, and can **stop** it from
