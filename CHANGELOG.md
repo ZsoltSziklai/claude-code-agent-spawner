@@ -5,6 +5,18 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] — 2026-10-06
+
+### Documentation
+
+- The Desktop skill (`agent-bridge`) now says what the executing agent needs for a
+  snapshot authorisation (`--from-snapshot` in the hand-over list), that snapshots
+  must be final **before** the request is filed (the hashes are taken on arrival),
+  that a changed snapshot needs a new request, and that one authorisation covers one
+  model (one request per model; the 1–20 limit is per request). Its description now
+  names the experiment authorisation and snapshot forking, while keeping the
+  when-to-use triggers.
+
 ## [1.6.0] — 2026-10-06
 
 ### Added
@@ -470,6 +482,18 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.6.1] — 2026-10-06
+
+#### Dokumentáció
+
+- A Desktop-skill (`agent-bridge`) most kimondja, mi kell a végrehajtónak egy
+  pillanatképes felhatalmazáshoz (`--from-snapshot` az átadandó listában), hogy a
+  pillanatképeknek a kérvény **előtt** kell véglegesnek lenniük (a hash a beérkezéskor
+  készül), hogy megváltozott pillanatképhez új kérvény kell, és hogy egy felhatalmazás
+  egy modellre szól (modellenként egy kérvény; az 1–20-as korlát kérvényenként értendő).
+  A leírása most megnevezi a kísérlet-felhatalmazást és a pillanatkép-forkot, a
+  használati jelek megtartásával.
 
 ### [1.6.0] — 2026-10-06
 
@@ -951,3 +975,4 @@ jóváhagyással.
 [1.5.2]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.2
 [1.5.3]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.3
 [1.6.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.0
+[1.6.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.1
