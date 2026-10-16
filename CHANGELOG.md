@@ -5,6 +5,23 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] — 2026-10-16
+
+### Fixed
+
+- **Reports of a worktree child forked from a worktree parent were never published.**
+  `fork-agent` has put every child worktree under the repository's *main* working
+  tree since 2026-08-07 (`git_main_toplevel`), but `agent_runtime_cwd` still resolved it
+  with `git rev-parse --show-toplevel`, which inside the parent's linked worktree
+  returns the parent itself. The lookup found no `.claude/worktrees/<name>` there and
+  silently fell back to the spec cwd — the parent's worktree. So
+  `bridge_publish_results` searched the parent, the child's finished reports stayed
+  in its own worktree, `answered` was never set, and the stall watcher sent a false
+  "idle" alert. The same path feeds the stall check, the child watchdog, the close
+  tree and transcript deletion, which now all see the child's real directory. The
+  old nested layout (children created inside the parent's worktree) is still found
+  as a fallback.
+
 ## [1.6.1] — 2026-10-06
 
 ### Documentation
@@ -482,6 +499,23 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.6.2] — 2026-10-16
+
+#### Javítva
+
+- **Worktree-s szülőből forkolt worktree-s gyerek jelentése sosem publikálódott.**
+  A `fork-agent` a gyerek worktree-jét a repó *fő* munkakönyvtára alá teszi
+  (`git_main_toplevel`), az `agent_runtime_cwd` viszont még a
+  `git rev-parse --show-toplevel`-lel kereste, ami a szülő worktree-jében magát a
+  szülőt adja. Ott nem volt `.claude/worktrees/<név>`, ezért a függvény csendben a
+  spec cwd-jére — a szülő worktree-jére — esett vissza. A `bridge_publish_results`
+  így a szülőnél keresett, a gyerek kész jelentései a saját worktree-jében ragadtak,
+  az `answered` sosem állt be, és a beragadás-figyelő hamis „tétlenül áll"
+  riasztást küldött. Ugyanez az út táplálja a beragadás-figyelőt, a gyerek-watchdogot,
+  a fa-lezárást és az átirat-törlést — most mind a gyerek valódi könyvtárát látja.
+  A régi, beágyazott elrendezést (a szülő worktree-jében létrehozott gyerek)
+  tartalékként továbbra is megtalálja.
 
 ### [1.6.1] — 2026-10-06
 
@@ -975,4 +1009,5 @@ jóváhagyással.
 [1.5.2]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.2
 [1.5.3]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.3
 [1.6.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.0
+[1.6.2]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.2
 [1.6.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.1

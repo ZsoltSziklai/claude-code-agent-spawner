@@ -1709,6 +1709,45 @@ yes_ "a gyökér jelentése publikálódik spec nélkül is" \
 no_  "és a munkakönyvtárból elkerül" \
      test -f "$PR/root/.bridge-result-proba-kor-1.md"
 
+print "\n\033[1mjelentés-publikálás: worktree-s szülőből forkolt worktree-s gyerek\033[0m"
+# 2026-10-16: a gyerek spec-cwd-je a SZULO worktree-je; a fork-agent a gyerek
+# worktree-jet a FO munkakonyvtar ala teszi, az agent_runtime_cwd viszont a
+# `--show-toplevel`-lel a szulonel kereste -> a harom kesz jelentes a gyerek
+# worktree-jeben ragadt, az `answered` sosem allt be, hamis STALLED riasztas.
+NW="$TMP/nestwt"; mkdir -p "$NW"; NW="${NW:A}"
+git init -q "$NW" >/dev/null 2>&1
+git -C "$NW" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init >/dev/null 2>&1
+mkdir -p "$NW/.claude/worktrees"
+git -C "$NW" worktree add -q -b worktree-szulo "$NW/.claude/worktrees/szulo" >/dev/null 2>&1
+NWP="$NW/.claude/worktrees/szulo"
+# A fork-agent mai elrendezese: a FO munkakonyvtar ala, a szulo cwd-jebol inditva.
+git -C "$NWP" worktree add -q -b worktree-szulo-gy "$NW/.claude/worktrees/szulo-gy" >/dev/null 2>&1
+# A 08-07 elotti, beagyazott elrendezes is megmaradt agentekhez.
+mkdir -p "$NWP/.claude/worktrees"
+git -C "$NWP" worktree add -q -b worktree-regi "$NWP/.claude/worktrees/regi" >/dev/null 2>&1
+is   "a gyerek futási könyvtára a saját worktree-je, nem a szülőé" \
+     "$(agent_runtime_cwd "$NWP" true szulo-gy)" "$NW/.claude/worktrees/szulo-gy"
+is   "a régi, beágyazott elrendezést is megtalálja" \
+     "$(agent_runtime_cwd "$NWP" true regi)" "$NWP/.claude/worktrees/regi"
+is   "worktree nélkül a cwd marad" \
+     "$(agent_runtime_cwd "$NWP" false szulo-gy)" "$NWP"
+mkdir -p "$NW/res"
+jq -n --arg c "$NWP" '{name:"szulo-gy", cwd:$c, worktree:true}' > "$NW/spec.json"
+print '{"szulo-gy":{"request":"nw-kor-1"}}' > "$NW/spawned.json"
+print "NESTED" > "$NW/.claude/worktrees/szulo-gy/.bridge-result-nw-kor-1.md"
+touch -t 202001010000 "$NW/.claude/worktrees/szulo-gy/.bridge-result-nw-kor-1.md"
+(
+  find_spec() { print "$NW/spec.json"; }
+  BRIDGE_SPAWNED="$NW/spawned.json" RES_DIR="$NW/res" \
+  bridge_publish_results
+) >/dev/null 2>&1
+yes_ "a gyerek jelentése publikálódik" \
+     test -f "$NW/res/nw-kor-1.md"
+no_  "és a gyerek worktree-jéből elkerül" \
+     test -f "$NW/.claude/worktrees/szulo-gy/.bridge-result-nw-kor-1.md"
+is   "az answered beáll (nincs hamis STALLED)" \
+     "$(jq -r '.["szulo-gy"].answered // empty' "$NW/spawned.json")" "nw-kor-1"
+
 print "\n\033[1mqueue-kapu: agent-indította spec\033[0m"
 # A queue eddig KAPUZATLAN volt. Ha AGENT ir bele (`requested_by`), az ugyanolyan
 # felugyelet nelkuli bevitel, mint a hid — ezert jovahagyast kell kernie.
@@ -1828,7 +1867,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=468}
+: ${SMOKE_EXPECTED:=474}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"
