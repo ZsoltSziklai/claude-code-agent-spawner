@@ -262,11 +262,28 @@ unregister_agent() {
 # Where the agent's claude process actually runs. Worktree agents live in
 # <git-toplevel-of-cwd>/.claude/worktrees/<name>, NOT in the spec cwd.
 # $1=cwd $2=worktree(true|false) $3=name
+#
+# ⚠️⚠️ 2026-10-16: ez a fuggveny meg a `--show-toplevel`-t hasznalta, mikozben a
+# fork-agent 2026-08-07 ota a FO munkakonyvtar ala teszi a worktree-t (lasd
+# git_main_toplevel). Worktree-s szulobol forkolt worktree-s gyereknel (a spec
+# cwd-je a szulo worktree-je) a `--show-toplevel` a SZULO worktree-jet adta, ott
+# nem volt `.claude/worktrees/<nev>`, es a fuggveny csendben a cwd-re — vagyis a
+# szulo worktree-jere — esett vissza. Kovetkezmeny: a bridge_publish_results a
+# szulonel kereste a jelentest, a mac-main-proxmox-dproxmox-eroforras-felmeres
+# harom kesz jelentese a sajat worktree-jeben ragadt, az `answered` sosem allt
+# be, es a beragadas-figyelo hamis "tetlenul all" riasztast kuldott.
+# Sorrend: a fo munkakonyvtar (a mai elrendezes), utana a regi, BEAGYAZOTT
+# elrendezes (a 08-07 elott indult agentekhez), vegul a cwd.
 agent_runtime_cwd() {
   local cwd worktree="$2" name="$3" top
   cwd=$(expand_tilde "$1")
   if [[ "$worktree" != "true" ]]; then
     print -r -- "$cwd"
+    return 0
+  fi
+  top=$(git_main_toplevel "$cwd" 2>/dev/null)
+  if [[ -n "$top" && -d "$top/.claude/worktrees/$name" ]]; then
+    print -r -- "$top/.claude/worktrees/$name"
     return 0
   fi
   top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
