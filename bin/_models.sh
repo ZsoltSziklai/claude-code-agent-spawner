@@ -13,6 +13,14 @@
 # source-olható legyen a betöltési sorrend megzavarása nélkül.
 
 # Alias = „a család legfrissebb modellje". A CLI súgója szerint ezek nem avulnak.
+# Mérve 2026-11-10, CLI 2.1.322: opus -> claude-opus-5-5, sonnet -> claude-sonnet-5-5,
+# fable -> claude-fable-5-2, haiku -> claude-haiku-5-5.
+# ⚠️ Az alias feloldása a CLI VERZIÓJÁTÓL függ: a 2.1.319 a `claude-fable-5-2`-t még
+# nem ismerte (`unrecognized_model`), és a `fable` nála a 5.1-re mutatott. Új modell
+# megjelenésekor ELŐSZÖR a CLI-t frissítsd (`claude update`), utána mérj.
+# ⚠️ PLAN módban a CLI a sima `haiku`-t SZÁNDÉKOSAN Sonnetre cseréli (mérve: plan ->
+# claude-sonnet-5-5, dontAsk/default -> claude-haiku-5-5; a `haiku[1m]`-re nem hat).
+# Plan módú méréssel ezért ne ellenőrizd a haiku aliast — hamis eredményt ad.
 typeset -ga CLAUDE_AGENT_MODEL_ALIASES=(opus sonnet haiku fable)
 
 # Rögzített azonosítók. ⚠️ Csak OLYAN kerüljön ide, amit MÉRTÜNK: a bináris
@@ -20,6 +28,7 @@ typeset -ga CLAUDE_AGENT_MODEL_ALIASES=(opus sonnet haiku fable)
 # `claude-fable-5-mythos-5` — 2026-10-03-án elutasítva: `unrecognized_model`).
 # A próba: `claude --model <id> --permission-mode plan --print 'ok'`.
 typeset -ga CLAUDE_AGENT_MODEL_IDS=(
+  claude-fable-5-2 claude-haiku-5-5                        # 2026-11-10, mérve (CLI 2.1.322)
   claude-opus-5-5 claude-sonnet-5-5 claude-fable-5-1       # 2026-10-03, mérve
   claude-opus-5 claude-sonnet-5 claude-fable-5 claude-haiku-4-5
   claude-opus-4-8 claude-opus-4-7
@@ -72,9 +81,19 @@ agent_model_valid() {
 # mindegyike elakadt volna.
 # A szabaly a CLI `FK()` fuggvenyet tukrozi: haiku, claude-opus-4-6,
 # claude-sonnet-4-6 -> nem. Ha a CLI valtoztat rajta, itt kell kovetni.
+#
+# 2026-11-10: a HAIKU 5.5 MAR TAMOGATJA. A CLI 2.1.322 szabalya:
+# `n.includes("haiku") && n !== "claude-haiku-5-5"` -> nem. Merve, `--permission-mode
+# auto` + a stream-json init `permissionMode` mezoje: claude-haiku-5-5 -> auto,
+# `haiku` alias -> claude-haiku-5-5 + auto, claude-haiku-4-5 -> default (a regi,
+# csendes visszavaltas — ez volt a kontroll). A `haiku` alias a CLI feloldasa
+# szerint a 5.5, ezert az is engedett.
 agent_model_supports_auto() {        # $1 = modell
   local m="${1-}"; m="${m%\[1m\]}"
-  [[ "$m" == *haiku* ]] && return 1
+  if [[ "$m" == *haiku* && "$m" != haiku && "$m" != claude-haiku-5-5 \
+        && "$m" != claude-haiku-5-5-* ]]; then
+    return 1
+  fi
   [[ "$m" == claude-opus-4-6* || "$m" == claude-sonnet-4-6* ]] && return 1
   return 0
 }

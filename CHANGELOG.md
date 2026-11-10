@@ -5,6 +5,31 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the
 version numbering follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-11-10
+
+### Added
+
+- **Claude Fable 5.2 (`claude-fable-5-2`) and Claude Haiku 5.5 (`claude-haiku-5-5`)**
+  are on the model whitelist, with or without the `[1m]` suffix. Both were probed
+  with the CLI before being added. They need Claude Code **2.1.322 or later**:
+  2.1.319 rejected `claude-fable-5-2` as `unrecognized_model` and still resolved
+  `fable` to 5.1. On 2.1.322 the aliases resolve to the newest models — `opus` →
+  Opus 5.5, `sonnet` → Sonnet 5.5, `fable` → Fable 5.2, `haiku` → Haiku 5.5 — so
+  the defaults (all aliases) follow automatically.
+
+### Changed
+
+- **Haiku 5.5 may run in `auto` mode.** The "Haiku cannot run in auto" rule now
+  covers Haiku 4.5 only, mirroring the CLI (`includes("haiku") && !== "claude-haiku-5-5"`).
+  Measured with `--permission-mode auto` and the stream-json init event:
+  `claude-haiku-5-5` and `haiku` start in `auto`, `claude-haiku-4-5` still falls back
+  to `default` (the control). A `haiku` + `auto` request is no longer rejected.
+
+### Notes
+
+- In **plan** mode the CLI deliberately runs the bare `haiku` alias on Sonnet
+  (`haiku[1m]` is not affected). Do not verify the alias with a plan-mode probe.
+
 ## [1.6.2] — 2026-10-16
 
 ### Fixed
@@ -499,6 +524,32 @@ Claude Code agents on macOS, over launchd + tmux, with Telegram-based approval.
 
 A formátum a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) elveit
 követi, a verziószámozás a [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-t.
+
+### [1.7.0] — 2026-11-10
+
+#### Hozzáadva
+
+- **Claude Fable 5.2 (`claude-fable-5-2`) és Claude Haiku 5.5 (`claude-haiku-5-5`)**
+  a modell-fehérlistán, `[1m]` utótaggal vagy anélkül. Mindkettőt a CLI-vel mértük,
+  mielőtt felkerült. **Claude Code 2.1.322 vagy újabb kell hozzájuk**: a 2.1.319 a
+  `claude-fable-5-2`-t `unrecognized_model`-lel elutasította, és a `fable` nála még
+  a 5.1 volt. A 2.1.322-n az aliasok a legújabbra mutatnak — `opus` → Opus 5.5,
+  `sonnet` → Sonnet 5.5, `fable` → Fable 5.2, `haiku` → Haiku 5.5 —, így az
+  alapértékek (mind alias) maguktól követik.
+
+#### Változott
+
+- **A Haiku 5.5 futhat `auto` módban.** A „Haiku nem futhat auto-ban" szabály most
+  csak a Haiku 4.5-re vonatkozik, a CLI-t tükrözve
+  (`includes("haiku") && !== "claude-haiku-5-5"`). Mérve `--permission-mode auto`-val
+  és a stream-json init eseménnyel: a `claude-haiku-5-5` és a `haiku` `auto`-ban
+  indul, a `claude-haiku-4-5` továbbra is `default`-ra vált (ez volt a kontroll).
+  A `haiku` + `auto` kérést már nem utasítjuk el.
+
+#### Megjegyzés
+
+- **Plan** módban a CLI a sima `haiku` aliast szándékosan Sonnettel futtatja (a
+  `haiku[1m]`-re nem hat). Plan módú próbával ne ellenőrizd az aliast.
 
 ### [1.6.2] — 2026-10-16
 
@@ -1009,5 +1060,6 @@ jóváhagyással.
 [1.5.2]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.2
 [1.5.3]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.5.3
 [1.6.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.0
+[1.7.0]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.7.0
 [1.6.2]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.2
 [1.6.1]: https://github.com/ZsoltSziklai/claude-code-agent-spawner/releases/tag/v1.6.1
