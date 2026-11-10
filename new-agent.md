@@ -149,8 +149,8 @@ Feldolgozás:
 - **`2` / `sonnet`** → `sonnet`, ugord át a 4a-bis-t
 - **`3` / `haiku`** → `haiku`, ugord át a 4a-bis-t
 - **`4` / `fable`** → `fable`, ugord át a 4a-bis-t
-- **Rögzített azonosító kézzel** (pl. `claude-sonnet-5`, `claude-haiku-4-5`,
-  `claude-fable-5`) → fogadd el úgy, ahogy beírta; a spawner fehérlistája
+- **Rögzített azonosító kézzel** (pl. `claude-fable-5-2`, `claude-haiku-5-5`,
+  `claude-sonnet-5`, `claude-haiku-4-5`) → fogadd el úgy, ahogy beírta; a spawner fehérlistája
   úgyis ellenőrzi. Ne kényszerítsd bele az alias-menübe.
 - **Bármi egyéb** → chat-ben kérdezz vissza
 
@@ -234,9 +234,11 @@ Feldolgozás:
      és a "child claude exited within 3s (check flags / auth)" hibaüzenet
      auth-problémára terelte a gyanút. -->
 
-⚠️ **Haiku esetén az `auto` nem választható.** A CLI csendben `manual`-ra váltaná
-(„auto mode unavailable for this model"), és a spawner az ilyen specet elutasítja.
-Ha a 4a-ban Haikut választottak és itt `auto` jön, chat-ben kérdezz vissza: *„A Haiku
+⚠️ **Haiku 4.5 (`claude-haiku-4-5…`) esetén az `auto` nem választható.** A CLI csendben
+`manual`-ra váltaná („auto mode unavailable for this model"), és a spawner az ilyen specet
+elutasítja. A `haiku` alias és a `claude-haiku-5-5` (Haiku 5.5) **már fut auto módban**
+(mérve 2026-11-10, CLI 2.1.322) — ott nincs teendő.
+Ha rögzített Haiku 4.5-öt választottak és itt `auto` jön, chat-ben kérdezz vissza: *„A Haiku 4.5
 nem fut auto módban. Felügyelet nélkül a dontAsk ajánlott (amit nem engedtél, azt
 elutasítja), vagy manual, ha te válaszolsz a kérdéseire. Melyik legyen?"*
 

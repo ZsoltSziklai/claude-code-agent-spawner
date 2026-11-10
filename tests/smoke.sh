@@ -112,7 +112,8 @@ done
 # A lista tartalma — a 2026-10-03-i meres szerint. Mindegyik id-t a CLI-vel
 # probaltuk (`--print 'ok'`), nem a binaris `strings`-jebol vettuk: ott olyan is
 # van, amihez a fiok nem fer hozza (`claude-fable-5-mythos-5` -> unrecognized_model).
-for m in claude-opus-5-5 claude-sonnet-5-5 claude-fable-5-1 claude-opus-5 \
+for m in claude-fable-5-2 claude-haiku-5-5 \
+         claude-opus-5-5 claude-sonnet-5-5 claude-fable-5-1 claude-opus-5 \
          claude-sonnet-5 claude-fable-5 claude-haiku-4-5 claude-opus-4-8 claude-opus-4-7; do
   yes_ "érvényes: $m"            agent_model_valid "$m"
   # ⚠️ A `[1m]` utotag MINDEN megadason mukodik (13 kombinacio lemerve) — korabban
@@ -133,8 +134,13 @@ no_  "a [1m] nem tesz érvényessé rosszat" agent_model_valid 'claude-nincs[1m]
 # ⚠️⚠️ HAIKU + AUTO: a CLI csendben MANUAL modra valt ("auto mode unavailable for
 # this model" -> "⏸ manual mode on", merve 2026-10-04). Felugyelet nelkul ez az elso
 # eszkozhivasnal orokre megall. NEM valtunk csendben modot, hanem elutasitjuk.
-no_  "a Haiku nem támogat auto módot (alias)"        agent_model_supports_auto haiku
-no_  "a rögzített Haiku sem"                         agent_model_supports_auto claude-haiku-4-5
+# 2026-11-10: a Haiku 5.5 MAR tamogatja (CLI 2.1.322, merve); a `haiku` alias erre mutat.
+yes_ "a Haiku 5.5 támogat auto módot"                agent_model_supports_auto claude-haiku-5-5
+yes_ "a haiku alias is (→ Haiku 5.5)"                agent_model_supports_auto haiku
+yes_ "a Haiku 5.5 1M-mel is"                         agent_model_supports_auto 'claude-haiku-5-5[1m]'
+yes_ "a dátumozott Haiku 5.5 is"                     agent_model_supports_auto claude-haiku-5-5-20261001
+yes_ "a Fable 5.2 igen"                              agent_model_supports_auto claude-fable-5-2
+no_  "a Haiku 4.5 nem támogat auto módot"            agent_model_supports_auto claude-haiku-4-5
 no_  "a dátumozott Haiku sem"                        agent_model_supports_auto claude-haiku-4-5-20251001
 no_  "1M utótaggal sem"                              agent_model_supports_auto 'claude-haiku-4-5[1m]'
 no_  "a CLI szerint az opus-4-6 sem"                 agent_model_supports_auto claude-opus-4-6
@@ -1867,7 +1873,7 @@ done
 # zsh a suite KOZEPEN kilep. Az exit-kod ugyan nem-nulla, tehat CI-ben nem
 # hazudik zoldet — de a kimenet megszakad, es enelkul a sor nelkul nem latszana,
 # hogy allitasok maradtak ki. Ha szandekosan teszel hozza tesztet, ird at.
-: ${SMOKE_EXPECTED:=474}
+: ${SMOKE_EXPECTED:=482}
 SMOKE_EXPECTED=$(( SMOKE_EXPECTED - SMOKE_SKIPPED ))
 if (( PASS + FAIL != SMOKE_EXPECTED )); then
   print -u2 "\n\033[31m⚠️  csak $((PASS + FAIL)) állítás futott le a várt $SMOKE_EXPECTED helyett — a suite félbeszakadt\033[0m"

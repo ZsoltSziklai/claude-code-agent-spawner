@@ -148,7 +148,7 @@ into the Telegram button data as well.
 | `agent` | one of the two | a continuation — the exact name of an existing agent |
 | `task` | **yes** | the child's job, at most 8 KB (bytes, not characters — accented text counts double) |
 | `worktree` | no | **`true` by default**; `false` only if you need the parent's uncommitted work |
-| `model` | no | `opus`/`sonnet`/`haiku`/`fable`, or a pinned id: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7`. The `[1m]` context suffix works on **any** of them, aliases included (`opus[1m]`). The list lives in one place, `bin/_models.sh`. |
+| `model` | no | `opus`/`sonnet`/`haiku`/`fable`, or a pinned id: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-2`, `claude-haiku-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7`. The `[1m]` context suffix works on **any** of them, aliases included (`opus[1m]`). The list lives in one place, `bin/_models.sh`. |
 | `effort` | no | `low`…`max` |
 | `cwd` | no | may be relative to `cwd_root` |
 
@@ -356,10 +356,10 @@ agent several times this week.)
 | `parallel` | **yes** | how many may run at once (≤ `forks`) |
 | `model` | **yes** | the authorisation is for one specific model; dated ids work (`claude-haiku-4-5-20251001`) |
 | `no_ask` | no | default `true`; every child gets `--no-ask` |
-| `permission_mode` | no | default `auto`; every child runs in it. **Haiku needs an explicit one** — see below |
+| `permission_mode` | no | default `auto`; every child runs in it. **Haiku 4.5 needs an explicit one** — see below |
 | `purpose` | no | ≤ 500 bytes, shown on the approval message |
 
-⚠️ **Haiku cannot run in `auto` mode**: the CLI silently switches it to `manual` ("auto mode unavailable for this model"), and an unattended agent then stops at its first permission prompt — forever. A Haiku request without an explicit mode is therefore rejected. Use `dontAsk` for unattended work (it refuses what is not allowed instead of waiting), `manual` only if someone answers.
+⚠️ **Haiku 4.5 cannot run in `auto` mode**: the CLI silently switches it to `manual` ("auto mode unavailable for this model"), and an unattended agent then stops at its first permission prompt — forever. A Haiku 4.5 request without an explicit mode is therefore rejected. **Haiku 5.5 (`claude-haiku-5-5`, and the `haiku` alias, which now resolves to it) does support `auto`** — measured 2026-11-10 on CLI 2.1.322. Use `dontAsk` for unattended work (it refuses what is not allowed instead of waiting), `manual` only if someone answers.
 
 A request above the sanity ceiling in `bridge-allow.json` (`experiment.max_forks /
 max_hours / max_parallel`, default 500 / 24 / 10) is rejected before it reaches the
@@ -718,7 +718,7 @@ a Telegram gomb-adatába is.
 | `agent` | a kettő egyike | folytatás — egy létező agent pontos neve |
 | `task` | **igen** | a gyerek feladata, max 8 KB (bájt, nem karakter — az ékezetes szöveg duplán számít) |
 | `worktree` | nem | **alapból `true`**; `false` csak ha a szülő nem commitolt munkája kell |
-| `model` | nem | `opus`/`sonnet`/`haiku`/`fable`, vagy rögzített id: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7`. A `[1m]` context-utótag **mindegyiken** működik, az aliasokon is (`opus[1m]`). A lista egy helyen él: `bin/_models.sh`. |
+| `model` | nem | `opus`/`sonnet`/`haiku`/`fable`, vagy rögzített id: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-2`, `claude-haiku-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-opus-4-7`. A `[1m]` context-utótag **mindegyiken** működik, az aliasokon is (`opus[1m]`). A lista egy helyen él: `bin/_models.sh`. |
 | `effort` | nem | `low`…`max` |
 | `cwd` | nem | a `cwd_root`-hoz képest relatív is lehet |
 
@@ -921,10 +921,10 @@ a héten többször rossz agentet talált meg.)
 | `parallel` | **igen** | egyszerre hány futhat (≤ `forks`) |
 | `model` | **igen** | a felhatalmazás egy konkrét modellre szól; a dátumozott id is jó (`claude-haiku-4-5-20251001`) |
 | `no_ask` | nem | alapból `true`; minden gyerek `--no-ask`-ot kap |
-| `permission_mode` | nem | alapból `auto`; minden gyerek ebben fut. **Haikunál kifejezetten meg kell adni** — lásd lent |
+| `permission_mode` | nem | alapból `auto`; minden gyerek ebben fut. **Haiku 4.5-nél kifejezetten meg kell adni** — lásd lent |
 | `purpose` | nem | ≤ 500 bájt, a jóváhagyó üzeneten látszik |
 
-⚠️ **A Haiku nem futhat `auto` módban**: a CLI csendben `manual`-ra váltja („auto mode unavailable for this model"), és egy felügyelet nélküli agent az első engedélykérésnél örökre megáll. A kifejezett mód nélküli Haiku-kérést ezért elutasítjuk. Felügyelet nélkül `dontAsk` (amit nem engedtél, azt elutasítja, ahelyett hogy várna), `manual` csak akkor, ha valaki válaszol.
+⚠️ **A Haiku 4.5 nem futhat `auto` módban**: a CLI csendben `manual`-ra váltja („auto mode unavailable for this model"), és egy felügyelet nélküli agent az első engedélykérésnél örökre megáll. A kifejezett mód nélküli Haiku 4.5-kérést ezért elutasítjuk. **A Haiku 5.5 (`claude-haiku-5-5`, és a rá mutató `haiku` alias) már támogatja az `auto`-t** — mérve 2026-11-10, CLI 2.1.322. Felügyelet nélkül `dontAsk` (amit nem engedtél, azt elutasítja, ahelyett hogy várna), `manual` csak akkor, ha valaki válaszol.
 
 A `bridge-allow.json` józansági plafonja (`experiment.max_forks / max_hours /
 max_parallel`, alapból 500 / 24 / 10) fölötti kérés el sem jut a telefonig. A
